@@ -1,8 +1,13 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 /// <summary>
-/// Detects when the lacrosse ball passes through the 2D goal gate plane.
-/// Attach to the same GameObject as BallLauncher and Rigidbody.
+/// Single source of truth for detecting when the lacrosse ball passes through the 2D
+/// goal gate plane. Attach to the same GameObject as the launcher and Rigidbody.
+///
+/// Other components (e.g. BallDisappear, ball launchers) should subscribe to
+/// <see cref="OnPlaneCrossed"/> / <see cref="OnGoalScored"/> instead of re-implementing
+/// plane-crossing detection.
 ///
 /// Quadrant layout (facing the goal):
 ///   TopLeft    | TopRight
@@ -33,6 +38,17 @@ public class GoalDetector : MonoBehaviour
     private float _prevZ;
 
     private const float DisplayDuration = 3f;
+
+    // ── events ────────────────────────────────────────────────────
+
+    /// <summary>Fired whenever the ball crosses the gate plane, whether it's a goal or a miss.</summary>
+    public event Action<Vector3> OnPlaneCrossed;
+
+    /// <summary>Fired once when the ball crosses the gate plane inside the goal bounds.</summary>
+    public event Action<Vector3> OnGoalScored;
+
+    /// <summary>True once the current shot has scored.</summary>
+    public bool GoalScored => _goalScored;
 
     // ── lifecycle ─────────────────────────────────────────────────
 
@@ -79,12 +95,15 @@ public class GoalDetector : MonoBehaviour
                 _displayTimer = DisplayDuration;
                 Debug.Log($"[GoalDetector] GOAL! Crossed gate at " +
                           $"({crossingPos.x:F2}, {crossingPos.y:F2}, {goalGateCenter.z:F2})");
+                OnGoalScored?.Invoke(crossingPos);
             }
             else
             {
                 Debug.Log($"[GoalDetector] Miss — ball crossed plane outside gate at " +
                           $"({crossingPos.x:F2}, {crossingPos.y:F2})");
             }
+
+            OnPlaneCrossed?.Invoke(crossingPos);
         }
 
         _prevZ = currentZ;

@@ -19,16 +19,6 @@
 [RequireComponent(typeof(GoalDetector))]
 public class NewestBallLauncher : MonoBehaviour
 {
-    // ── Enums ─────────────────────────────────────────────────────
-
-    public enum GoalQuadrant
-    {
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight
-    }
-
     // ── Inspector ─────────────────────────────────────────────────
 
     [Header("Shot Setup")]
@@ -36,7 +26,7 @@ public class NewestBallLauncher : MonoBehaviour
     public Transform launchOrigin;
 
     [Tooltip("Which quadrant of the goal to aim at.")]
-    public GoalQuadrant targetQuadrant = GoalQuadrant.TopLeft;
+    public Quadrant targetQuadrant = Quadrant.TopLeft;
 
     [Tooltip("0 = dead-center of the quadrant. 1 = touching the quadrant boundary. " +
              "Use ~0.6-0.8 for realistic tight-corner shots.")]
@@ -77,11 +67,8 @@ public class NewestBallLauncher : MonoBehaviour
     private float _launchTimer;
     private bool _pendingLaunch;
 
-    // detection / falling state
-    private bool _launched = false;
-    private bool _goalScored = false;
+    // falling state
     private bool _falling = false;
-    private float _prevZ;
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -89,6 +76,16 @@ public class NewestBallLauncher : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody>();
         _goalDetector = GetComponent<GoalDetector>();
+    }
+
+    void OnEnable()
+    {
+        _goalDetector.OnGoalScored += HandleGoalScored;
+    }
+
+    void OnDisable()
+    {
+        _goalDetector.OnGoalScored -= HandleGoalScored;
     }
 
     void Start()
@@ -123,51 +120,13 @@ public class NewestBallLauncher : MonoBehaviour
                 LaunchBall();
             }
         }
+    }
 
-        // Simple plane-cross detection to know when the ball has passed the goal gate.
-        // We do this here so the launcher can start custom gravity (falling) without
-        // relying on Unity's global gravity.
-        if (_launched && !_goalScored && _goalDetector != null)
-        {
-            float currentZ = transform.position.z;
-            float gateZ = _goalDetector.goalGateCenter.z;
-
-            bool crossedPlane = (_prevZ > gateZ && currentZ <= gateZ)
-                             || (_prevZ < gateZ && currentZ >= gateZ);
-
-            if (crossedPlane)
-            {
-#if UNITY_6000_0_OR_NEWER
-                Vector3 velocity = _rb.linearVelocity;
-#else
-                Vector3 velocity = _rb.velocity;
-#endif
-                // reconstruct previous position and interpolate to find exact crossing point
-                Vector3 prevPos = transform.position - velocity * Time.deltaTime;
-                float t = Mathf.InverseLerp(_prevZ, currentZ, gateZ);
-                Vector3 crossingPos = Vector3.Lerp(prevPos, transform.position, t);
-
-                float dx = Mathf.Abs(crossingPos.x - _goalDetector.goalGateCenter.x);
-                float dy = Mathf.Abs(crossingPos.y - _goalDetector.goalGateCenter.y);
-
-                bool insideGate = dx <= _goalDetector.goalGateHalfSize.x && dy <= _goalDetector.goalGateHalfSize.y;
-
-                if (insideGate)
-                {
-                    _goalScored = true;
-                    Debug.Log($"[BallLauncher] GOAL detected by launcher at ({crossingPos.x:F2}, {crossingPos.y:F2}, {gateZ:F2})");
-
-                    if (enableCustomGravityOnGoal)
-                        BeginFalling();
-                }
-                else
-                {
-                    Debug.Log($"[BallLauncher] Ball crossed plane outside gate at ({crossingPos.x:F2}, {crossingPos.y:F2})");
-                }
-            }
-
-            _prevZ = currentZ;
-        }
+    /// <summary>Called by GoalDetector when this ball crosses the plane inside the gate.</summary>
+    private void HandleGoalScored(Vector3 crossingPos)
+    {
+        if (enableCustomGravityOnGoal)
+            BeginFalling();
     }
 
     void FixedUpdate()
@@ -194,7 +153,7 @@ public class NewestBallLauncher : MonoBehaviour
     /// Launches toward a specific quadrant, overriding the Inspector selection.
     /// Useful for scripted sequences or AI-driven shot selection.
     /// </summary>
-    public void LaunchToward(GoalQuadrant quadrant)
+    public void LaunchToward(Quadrant quadrant)
     {
         // ── 1. Determine launch origin position ──────────────────
         Vector3 origin = launchOrigin != null ? launchOrigin.position : transform.position;
@@ -218,10 +177,7 @@ public class NewestBallLauncher : MonoBehaviour
             transform.position = origin;
 
             // reset internal state
-            _launched = false;
-            _goalScored = false;
             _falling = false;
-            _prevZ = origin.z;
         }
 
         // ── 3. Compute target point inside the chosen quadrant ───
@@ -241,11 +197,7 @@ public class NewestBallLauncher : MonoBehaviour
         _rb.velocity = launchVelocity;
 #endif
 
-        // mark launched so Update() will begin monitoring crossing
-        _launched = true;
-        _goalScored = false;
         _falling = false;
-        _prevZ = transform.position.z;
 
         _goalDetector.OnBallLaunched();
 
@@ -259,24 +211,10 @@ public class NewestBallLauncher : MonoBehaviour
     /// <summary>
     /// Returns the world-space aim point inside the requested quadrant of the goal gate.
     /// </summary>
-    Vector3 ComputeQuadrantTarget(GoalQuadrant quadrant)
+    Vector3 ComputeQuadrantTarget(Quadrant quadrant)
     {
-        Vector3 center = _goalDetector.goalGateCenter;
-        Vector2 half = _goalDetector.goalGateHalfSize;
-
-        // Each quadrant occupies half the gate width/height
-        float hx = half.x * 0.5f;
-        float hy = half.y * 0.5f;
-
-        // Quadrant centre offsets from gate centre
-        float signX = (quadrant == GoalQuadrant.TopLeft || quadrant == GoalQuadrant.BottomLeft) ? -1f : 1f;
-        float signY = (quadrant == GoalQuadrant.TopLeft || quadrant == GoalQuadrant.TopRight) ? 1f : -1f;
-
-        // quadrantDepth pushes the aim point toward the corner of the quadrant
-        Vector3 quadrantCenter = center + new Vector3(signX * hx, signY * hy, 0f);
-        Vector3 quadrantCorner = center + new Vector3(signX * half.x, signY * half.y, 0f);
-
-        return Vector3.Lerp(quadrantCenter, quadrantCorner, quadrantDepth);
+        return QuadrantMath.ComputePointInQuadrant(
+            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, quadrant, quadrantDepth);
     }
 
     /// <summary>
@@ -336,7 +274,7 @@ public class NewestBallLauncher : MonoBehaviour
         Vector3 origin = launchOrigin != null ? launchOrigin.position : transform.position;
 
         // Draw aim point for each quadrant
-        GoalQuadrant[] quads = (GoalQuadrant[])System.Enum.GetValues(typeof(GoalQuadrant));
+        Quadrant[] quads = (Quadrant[])System.Enum.GetValues(typeof(Quadrant));
         Color[] colors = { Color.red, Color.green, Color.blue, Color.yellow };
 
         for (int i = 0; i < quads.Length; i++)
