@@ -22,16 +22,6 @@
 [RequireComponent(typeof(GoalDetector))]
 public class RandomLauncher : MonoBehaviour
 {
-    // ── Enums ─────────────────────────────────────────────────────
-
-    public enum GoalQuadrant
-    {
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight
-    }
-
     // ── Inspector ─────────────────────────────────────────────────
 
     [Header("Shot Setup")]
@@ -39,7 +29,7 @@ public class RandomLauncher : MonoBehaviour
     public Transform launchOrigin;
 
     [Tooltip("Which quadrant of the goal to aim at.")]
-    public GoalQuadrant targetQuadrant = GoalQuadrant.TopLeft;
+    public Quadrant targetQuadrant = Quadrant.TopLeft;
 
     [Header("Random Target")]
     [Tooltip("Inset from each quadrant edge as a fraction of the quadrant's half-size. " +
@@ -81,11 +71,8 @@ public class RandomLauncher : MonoBehaviour
     private float _launchTimer;
     private bool _pendingLaunch;
 
-    // detection / falling state
-    private bool _launched = false;
-    private bool _goalScored = false;
+    // falling state
     private bool _falling = false;
-    private float _prevZ;
 
     // last random target (used by Gizmos to show where the next/last shot went)
     private Vector3 _lastTarget;
@@ -97,6 +84,16 @@ public class RandomLauncher : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody>();
         _goalDetector = GetComponent<GoalDetector>();
+    }
+
+    void OnEnable()
+    {
+        _goalDetector.OnGoalScored += HandleGoalScored;
+    }
+
+    void OnDisable()
+    {
+        _goalDetector.OnGoalScored -= HandleGoalScored;
     }
 
     void Start()
@@ -129,48 +126,13 @@ public class RandomLauncher : MonoBehaviour
                 LaunchBall();
             }
         }
+    }
 
-        // Plane-cross detection to know when the ball has passed the goal gate.
-        if (_launched && !_goalScored && _goalDetector != null)
-        {
-            float currentZ = transform.position.z;
-            float gateZ = _goalDetector.goalGateCenter.z;
-
-            bool crossedPlane = (_prevZ > gateZ && currentZ <= gateZ)
-                             || (_prevZ < gateZ && currentZ >= gateZ);
-
-            if (crossedPlane)
-            {
-#if UNITY_6000_0_OR_NEWER
-                Vector3 velocity = _rb.linearVelocity;
-#else
-                Vector3 velocity = _rb.velocity;
-#endif
-                Vector3 prevPos = transform.position - velocity * Time.deltaTime;
-                float t = Mathf.InverseLerp(_prevZ, currentZ, gateZ);
-                Vector3 crossingPos = Vector3.Lerp(prevPos, transform.position, t);
-
-                float dx = Mathf.Abs(crossingPos.x - _goalDetector.goalGateCenter.x);
-                float dy = Mathf.Abs(crossingPos.y - _goalDetector.goalGateCenter.y);
-
-                bool insideGate = dx <= _goalDetector.goalGateHalfSize.x && dy <= _goalDetector.goalGateHalfSize.y;
-
-                if (insideGate)
-                {
-                    _goalScored = true;
-                    Debug.Log($"[RandomLauncher] GOAL detected at ({crossingPos.x:F2}, {crossingPos.y:F2}, {gateZ:F2})");
-
-                    if (enableCustomGravityOnGoal)
-                        BeginFalling();
-                }
-                else
-                {
-                    Debug.Log($"[RandomLauncher] Ball crossed plane outside gate at ({crossingPos.x:F2}, {crossingPos.y:F2})");
-                }
-            }
-
-            _prevZ = currentZ;
-        }
+    /// <summary>Called by GoalDetector when this ball crosses the plane inside the gate.</summary>
+    private void HandleGoalScored(Vector3 crossingPos)
+    {
+        if (enableCustomGravityOnGoal)
+            BeginFalling();
     }
 
     void FixedUpdate()
@@ -196,7 +158,7 @@ public class RandomLauncher : MonoBehaviour
     /// Launches toward a random point inside a specific quadrant, overriding the Inspector selection.
     /// Useful for scripted sequences or AI-driven shot selection.
     /// </summary>
-    public void LaunchToward(GoalQuadrant quadrant)
+    public void LaunchToward(Quadrant quadrant)
     {
         // ── 1. Determine launch origin position ──────────────────
         Vector3 origin = launchOrigin != null ? launchOrigin.position : transform.position;
@@ -218,10 +180,7 @@ public class RandomLauncher : MonoBehaviour
 
             transform.position = origin;
 
-            _launched = false;
-            _goalScored = false;
             _falling = false;
-            _prevZ = origin.z;
         }
 
         // ── 3. Pick a random target inside the chosen quadrant ───
@@ -242,10 +201,7 @@ public class RandomLauncher : MonoBehaviour
         _rb.velocity = launchVelocity;
 #endif
 
-        _launched = true;
-        _goalScored = false;
         _falling = false;
-        _prevZ = transform.position.z;
 
         _goalDetector.OnBallLaunched();
 
@@ -260,31 +216,10 @@ public class RandomLauncher : MonoBehaviour
     /// Returns a uniformly-random world-space point inside the requested quadrant,
     /// inset from the edges by <see cref="edgePadding"/>.
     /// </summary>
-    Vector3 ComputeRandomQuadrantTarget(GoalQuadrant quadrant)
+    Vector3 ComputeRandomQuadrantTarget(Quadrant quadrant)
     {
-        Vector3 center = _goalDetector.goalGateCenter;
-        Vector2 half = _goalDetector.goalGateHalfSize;
-
-        // Each quadrant occupies half the gate in each axis.
-        float hx = half.x * 0.5f;
-        float hy = half.y * 0.5f;
-
-        // Quadrant centre offsets from gate centre.
-        float signX = (quadrant == GoalQuadrant.TopLeft || quadrant == GoalQuadrant.BottomLeft) ? -1f : 1f;
-        float signY = (quadrant == GoalQuadrant.TopLeft || quadrant == GoalQuadrant.TopRight) ? 1f : -1f;
-
-        // World-space centre of this quadrant.
-        Vector3 quadCenter = center + new Vector3(signX * hx, signY * hy, 0f);
-
-        // Usable half-extents after applying edge padding.
-        float usableHx = hx * (1f - edgePadding);
-        float usableHy = hy * (1f - edgePadding);
-
-        // Pick a uniformly random offset within the usable area.
-        float randomX = Random.Range(-usableHx, usableHx);
-        float randomY = Random.Range(-usableHy, usableHy);
-
-        return quadCenter + new Vector3(randomX, randomY, 0f);
+        return QuadrantMath.ComputeRandomPointInQuadrant(
+            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, quadrant, edgePadding);
     }
 
     /// <summary>
@@ -340,17 +275,15 @@ public class RandomLauncher : MonoBehaviour
         Vector2 half = _goalDetector.goalGateHalfSize;
 
         // Draw the usable (padded) bounds for each quadrant.
-        GoalQuadrant[] quads = (GoalQuadrant[])System.Enum.GetValues(typeof(GoalQuadrant));
+        Quadrant[] quads = (Quadrant[])System.Enum.GetValues(typeof(Quadrant));
         Color[] colors = { Color.red, Color.green, Color.blue, Color.yellow };
 
         for (int i = 0; i < quads.Length; i++)
         {
             float hx = half.x * 0.5f;
             float hy = half.y * 0.5f;
-            float signX = (quads[i] == GoalQuadrant.TopLeft || quads[i] == GoalQuadrant.BottomLeft) ? -1f : 1f;
-            float signY = (quads[i] == GoalQuadrant.TopLeft || quads[i] == GoalQuadrant.TopRight) ? 1f : -1f;
 
-            Vector3 quadCenter = center + new Vector3(signX * hx, signY * hy, 0f);
+            Vector3 quadCenter = QuadrantMath.QuadrantCenter(center, half, quads[i]);
             float usableHx = hx * (1f - edgePadding);
             float usableHy = hy * (1f - edgePadding);
 

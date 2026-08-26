@@ -1,7 +1,5 @@
 using UnityEngine;
 
-public enum Quadrant { TopLeft, TopRight, BottomLeft, BottomRight }
-
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(GoalDetector))]
 public class BallLauncher : MonoBehaviour
