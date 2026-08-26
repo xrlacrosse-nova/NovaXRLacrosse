@@ -84,3 +84,5 @@ Assets/Plugins/Lumin/Editor*
 
 # Exclude rider idea data
 .idea
+
+Plans/
