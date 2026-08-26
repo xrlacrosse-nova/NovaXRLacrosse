@@ -38,11 +38,6 @@ public class NewestBallLauncher : MonoBehaviour
              "this acts as a minimum — the ball will never be slower than this.")]
     public float launchSpeed = 18f;
 
-    [Tooltip("Extra upward bias added at launch to give the ball an arc. " +
-             "0 = flat line drive, 1+ = looping arc.")]
-    [Range(0f, 3f)]
-    public float arcBias = 0.4f;
-
     [Tooltip("How many seconds after Play() the ball launches automatically. Set to 0 to launch immediately.")]
     [Min(0f)]
     public float launchDelay = 0.5f;
@@ -184,7 +179,7 @@ public class NewestBallLauncher : MonoBehaviour
         Vector3 target = ComputeQuadrantTarget(quadrant);
 
         // ── 4. Compute launch velocity ───────────────────────────
-        Vector3 launchVelocity = ComputeLaunchVelocity(origin, target);
+        Vector3 launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, launchSpeed);
 
         // Ensure physics participation (cover case where other scripts toggle kinematic)
         _rb.isKinematic = false;
@@ -215,36 +210,6 @@ public class NewestBallLauncher : MonoBehaviour
     {
         return QuadrantMath.ComputePointInQuadrant(
             _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, quadrant, quadrantDepth);
-    }
-
-    /// <summary>
-    /// Calculates a launch velocity that sends the ball from <paramref name="origin"/>
-    /// to <paramref name="target"/>, respecting <see cref="launchSpeed"/> and
-    /// <see cref="arcBias"/>.
-    /// </summary>
-    Vector3 ComputeLaunchVelocity(Vector3 origin, Vector3 target)
-    {
-        Vector3 delta = target - origin;
-
-        Vector3 horizontal = new Vector3(delta.x, 0f, delta.z);
-        float horizontalDist = horizontal.magnitude;
-
-        if (horizontalDist < 0.001f)
-            return Vector3.forward * launchSpeed;
-
-        // With no gravity during flight, shoot directly at the target
-        // and add a small upward arc bias only as a raw velocity offset
-        Vector3 directDir = delta.normalized;
-        Vector3 velocity = directDir * launchSpeed;
-
-        // Add a small upward kick scaled by arcBias (purely cosmetic arc,
-        // since there's no gravity to pull it back down mid-flight)
-        velocity += Vector3.up * (arcBias * 2f);
-
-        if (velocity.magnitude < launchSpeed)
-            velocity = velocity.normalized * launchSpeed;
-
-        return velocity;
     }
 
     /// <summary>
