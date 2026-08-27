@@ -16,7 +16,8 @@ using UnityEngine;
 /// Setup:
 ///   1. Attach this script to the ball GameObject that also has GoalDetector + Rigidbody.
 ///   2. Set LaunchOrigin to a Transform positioned where shots come from (e.g. an empty at player position).
-///   3. Pick an AimMode, a Quadrant, and press Play – the ball will launch automatically.
+///   3. Pick an AimMode and press Play – the ball will launch automatically at a randomly
+///      chosen quadrant (logged to the console) and keep looping after each despawn.
 ///      Alternatively, call LaunchBall() from any other script or Unity Event.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
@@ -34,9 +35,6 @@ public class RandomLauncher : MonoBehaviour
     [Header("Shot Setup")]
     [Tooltip("Where the ball is shot FROM. Assign a Transform in the scene (e.g. an empty at player position).")]
     public Transform launchOrigin;
-
-    [Tooltip("Which quadrant of the goal to aim at.")]
-    public Quadrant targetQuadrant = Quadrant.TopLeft;
 
     [Tooltip("RandomInQuadrant = a different random point inside the quadrant every shot. " +
              "FixedPoint = the same deterministic point every shot (see QuadrantDepth).")]
@@ -98,6 +96,7 @@ public class RandomLauncher : MonoBehaviour
     // last target (used by Gizmos to show where the next/last shot went)
     private Vector3 _lastTarget;
     private bool _hasTarget = false;
+    private Quadrant _lastQuadrant;
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -187,17 +186,21 @@ public class RandomLauncher : MonoBehaviour
     // ── Public API ────────────────────────────────────────────────
 
     /// <summary>
-    /// Launches the ball toward <see cref="targetQuadrant"/> using the current <see cref="aimMode"/>.
-    /// Safe to call from other scripts or Unity Events at any time.
+    /// Randomly picks one of the four quadrants, logs it, and launches the ball toward it
+    /// using the current <see cref="aimMode"/>. Safe to call from other scripts or Unity Events at any time.
     /// </summary>
     public void LaunchBall()
     {
-        LaunchToward(targetQuadrant);
+        Quadrant[] quads = (Quadrant[])System.Enum.GetValues(typeof(Quadrant));
+        Quadrant quadrant = quads[Random.Range(0, quads.Length)];
+
+        Debug.Log($"[RandomLauncher] Aiming at quadrant: {quadrant}");
+
+        LaunchToward(quadrant);
     }
 
     /// <summary>
-    /// Launches toward a specific quadrant, overriding the Inspector selection.
-    /// Useful for scripted sequences or AI-driven shot selection.
+    /// Launches toward a specific quadrant. Useful for scripted sequences or AI-driven shot selection.
     /// </summary>
     public void LaunchToward(Quadrant quadrant)
     {
@@ -229,6 +232,7 @@ public class RandomLauncher : MonoBehaviour
         Vector3 target = ComputeTarget(quadrant);
         _lastTarget = target;
         _hasTarget = true;
+        _lastQuadrant = quadrant;
 
         // ── 4. Compute launch velocity ───────────────────────────
         Vector3 launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, launchSpeed);
@@ -334,10 +338,13 @@ public class RandomLauncher : MonoBehaviour
                 Gizmos.DrawLine(origin, t);
             }
 
-            // Highlight the currently selected quadrant with a larger sphere.
-            Vector3 selected = QuadrantMath.ComputePointInQuadrant(center, half, targetQuadrant, quadrantDepth);
-            Gizmos.color = Color.white;
-            Gizmos.DrawWireSphere(selected, 0.08f);
+            // Highlight the most recently launched quadrant with a larger sphere.
+            if (_hasTarget)
+            {
+                Vector3 selected = QuadrantMath.ComputePointInQuadrant(center, half, _lastQuadrant, quadrantDepth);
+                Gizmos.color = Color.white;
+                Gizmos.DrawWireSphere(selected, 0.08f);
+            }
         }
 
         // Show the last actual launch target (bright white sphere + line from origin).
