@@ -437,11 +437,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dbd2603d43f13cb41843c56a24223d7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LacrosseStickAttacher
-  lacrosseStick: {fileID: 588939134}
-  holdingHand: 0
-  positionOffset: {x: 0, y: 0, z: 0}
-  rotationOffset: {x: 0, y: 0, z: 0}
-  instantiateFromPrefab: 0
 --- !u!114 &229782165
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -454,8 +449,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b876e486fd1dafe48aa930a758943be3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShooterAnimation
-  runSpeed: 1
-  runDuration: 0.5
 --- !u!95 &229782166
 Animator:
   serializedVersion: 7
@@ -639,6 +632,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 02cdede30496d5b4ea7cae99beed9c5b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TwoHandLacrosseGrip
+--- !u!1 &700000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 700000002}
+  m_Layer: 0
+  m_Name: BallSpawn
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &700000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0.889, y: 1.406, z: 4.201}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1655719300}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &866954152
 GameObject:
   m_ObjectHideFlags: 0
@@ -775,7 +799,7 @@ Transform:
   m_GameObject: {fileID: 866954152}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.889, y: 1.406, z: 4.201}
+  m_LocalPosition: {x: -0.889, y: 1.409, z: 4.201}
   m_LocalScale: {x: 0.08, y: 0.08, z: 0.08}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -793,8 +817,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f29cfdfaf0f457e49a77fe15a34a5e19, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalDetector
-  goalGateCenter: {x: -2.25, y: 1.005, z: 0.75}
-  goalGateHalfSize: {x: 0.762, y: 1.045}
+  goalGateCenter: {x: -0.75, y: 1.005, z: 0.75}
+  goalGateHalfSize: {x: 0.75, y: 1}
   showOnScreenGoal: 1
 --- !u!114 &866954162
 MonoBehaviour:
@@ -809,11 +833,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomLauncher
   launchOrigin: {fileID: 700000002}
-  targetQuadrant: 2
+  targetQuadrant: 0
   aimMode: 0
   edgePadding: 0.05
   quadrantDepth: 0.65
-  launchSpeed: 12
+  launchSpeed: 2
   launchDelay: 0.5
   autoResetOnLaunch: 1
   enableCustomGravityOnGoal: 1
@@ -828,7 +852,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9b0d16b47e762d84d93990c4e2611218, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FloorBoundary
   floorY: 0
   cancelDownwardVelocity: 1
@@ -919,37 +943,6 @@ Transform:
     type: 3}
   m_PrefabInstance: {fileID: 154547089}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &700000001
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 700000002}
-  m_Layer: 0
-  m_Name: BallSpawn
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &700000002
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 700000001}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.889, y: 1.406, z: 4.201}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1655719300}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1655719299
 GameObject:
   m_ObjectHideFlags: 0
