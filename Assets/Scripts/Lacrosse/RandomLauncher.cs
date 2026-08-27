@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -75,6 +76,14 @@ public class RandomLauncher : MonoBehaviour
     [Tooltip("Downward acceleration (m/s^2) applied while the ball is falling. ~9.81 mimics Earth gravity.")]
     public float customGravity = 9.81f;
 
+    [Header("Auto Loop")]
+    [Tooltip("If true, automatically launches another shot (toward the same quadrant) after the ball despawns.")]
+    public bool autoLoop = true;
+
+    [Tooltip("Seconds to wait after the ball despawns before launching the next shot, simulating time for the user to reset/get ready.")]
+    [Min(0f)]
+    public float resetDelay = 2f;
+
     // ── Private ───────────────────────────────────────────────────
 
     private Rigidbody _rb;
@@ -102,11 +111,15 @@ public class RandomLauncher : MonoBehaviour
     void OnEnable()
     {
         _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        if (_floorBoundary != null)
+            _floorBoundary.OnDespawned += HandleDespawned;
     }
 
     void OnDisable()
     {
         _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        if (_floorBoundary != null)
+            _floorBoundary.OnDespawned -= HandleDespawned;
     }
 
     void Start()
@@ -147,6 +160,20 @@ public class RandomLauncher : MonoBehaviour
     {
         if (enableCustomGravityOnGoal)
             BeginFalling();
+    }
+
+    /// <summary>Called by FloorBoundary once the ball despawns after coming to rest on the floor.
+    /// Kicks off the next shot (toward the same quadrant) after <see cref="resetDelay"/>.</summary>
+    private void HandleDespawned()
+    {
+        if (autoLoop)
+            StartCoroutine(AutoLaunchAfterDelay());
+    }
+
+    private IEnumerator AutoLaunchAfterDelay()
+    {
+        yield return new WaitForSeconds(resetDelay);
+        LaunchBall();
     }
 
     void FixedUpdate()

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 
@@ -36,6 +37,9 @@ public class FloorBoundary : MonoBehaviour
     private Renderer _renderer;
     private Collider _collider;
     private Coroutine _despawnRoutine;
+
+    /// <summary>Raised once the object actually despawns (after <see cref="despawnDelay"/> elapses).</summary>
+    public event Action OnDespawned;
 
     private void Awake()
     {
@@ -130,6 +134,7 @@ public class FloorBoundary : MonoBehaviour
         if (_hasRigidbody) _rb.isKinematic = true;
 
         _despawnRoutine = null;
+        OnDespawned?.Invoke();
     }
 
     /// <summary>
