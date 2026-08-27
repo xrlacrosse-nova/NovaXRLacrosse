@@ -1,9 +1,13 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using MagicLeap.Examples;
 
 /// <summary>
-/// Launches the lacrosse ball toward a chosen quadrant of the goal gate defined in
-/// GoalDetector (must be on the same GameObject). Supports two aim modes:
+/// Runs a simulation-style shooting session: the ball sits idle until the player starts a session
+/// (controller trigger, or Space in the Unity Editor), waits through a pre-start countdown, then
+/// fires a fixed number of shots at randomized quadrants of the goal gate defined in GoalDetector
+/// (must be on the same GameObject), spaced by a randomized interval. Supports two aim modes:
 ///   - RandomInQuadrant: a uniformly-random point inside the quadrant (no two shots alike).
 ///   - FixedPoint: a deterministic point, interpolated from the quadrant's center toward its
 ///     outer corner by QuadrantDepth (0 = center, 1 = corner).
@@ -16,9 +20,10 @@ using UnityEngine;
 /// Setup:
 ///   1. Attach this script to the ball GameObject that also has GoalDetector + Rigidbody.
 ///   2. Set LaunchOrigin to a Transform positioned where shots come from (e.g. an empty at player position).
-///   3. Pick an AimMode and press Play – the ball will launch automatically at a randomly
-///      chosen quadrant (logged to the console) and keep looping after each despawn.
-///      Alternatively, call LaunchBall() from any other script or Unity Event.
+///   3. Pick an AimMode and press Play. The ball stays idle until the start trigger fires
+///      (controller trigger button, or Space bar in the Editor), then a session of ShotsPerSession
+///      shots runs automatically. Alternatively, call LaunchBall() directly from any other script
+///      or Unity Event to fire a single shot outside the session flow.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(GoalDetector))]
@@ -57,10 +62,6 @@ public class RandomLauncher : MonoBehaviour
              "this acts as a minimum — the ball will never be slower than this.")]
     public float launchSpeed = 18f;
 
-    [Tooltip("How many seconds after Play() the ball launches automatically. Set to 0 to launch immediately.")]
-    [Min(0f)]
-    public float launchDelay = 0.5f;
-
     [Header("Ball Reset")]
     [Tooltip("If true, the ball teleports back to LaunchOrigin and resets GoalDetector state " +
              "each time LaunchBall() is called, so you can test repeatedly in the editor.")]
@@ -74,24 +75,42 @@ public class RandomLauncher : MonoBehaviour
     [Tooltip("Downward acceleration (m/s^2) applied while the ball is falling. ~9.81 mimics Earth gravity.")]
     public float customGravity = 9.81f;
 
-    [Header("Auto Loop")]
-    [Tooltip("If true, automatically launches another shot (toward the same quadrant) after the ball despawns.")]
-    public bool autoLoop = true;
+    [Header("Session")]
+    [Tooltip("Number of shots fired per session, once started.")]
+    [Min(1)]
+    public int shotsPerSession = 10;
 
-    [Tooltip("Seconds to wait after the ball despawns before launching the next shot, simulating time for the user to reset/get ready.")]
+    [Tooltip("Seconds after the start trigger before the first shot fires. Randomized per session.")]
     [Min(0f)]
-    public float resetDelay = 2f;
+    public float minPreStartDelay = 10f;
+    [Min(0f)]
+    public float maxPreStartDelay = 15f;
+
+    [Tooltip("Seconds between shots within a session. Randomized fresh each shot so shots aren't rhythmic.")]
+    [Min(0f)]
+    public float minShotInterval = 5f;
+    [Min(0f)]
+    public float maxShotInterval = 10f;
 
     // ── Private ───────────────────────────────────────────────────
 
     private Rigidbody _rb;
     private GoalDetector _goalDetector;
     private FloorBoundary _floorBoundary;
-    private float _launchTimer;
-    private bool _pendingLaunch;
 
     // falling state
     private bool _falling = false;
+
+    // session state
+    private bool _sessionRunning = false;
+    private bool _controllerTriggerSubscribed = false;
+    private int _shotsFiredThisSession = 0;
+
+    // pre-start countdown display state
+    private bool _showCountdown = false;
+    private float _countdownRemaining = 0f;
+    private float _goDisplayTimer = 0f;
+    private const float GoDisplayDuration = 1f;
 
     // last target (used by Gizmos to show where the next/last shot went)
     private Vector3 _lastTarget;
@@ -112,6 +131,22 @@ public class RandomLauncher : MonoBehaviour
         _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned += HandleDespawned;
+
+        // Don't touch MagicLeapController.Instance in Awake() — it needs an InputActionManager
+        // already present in the scene, which may not be true that early. Try here instead, and
+        // fail gracefully (e.g. testing in the Editor without a full ML rig set up) so the Space
+        // bar fallback below still works.
+        try
+        {
+            MagicLeapController.Instance.TriggerPressed += HandleStartTriggerPressed;
+            _controllerTriggerSubscribed = true;
+        }
+        catch (System.NullReferenceException)
+        {
+            Debug.LogWarning("[RandomLauncher] No MagicLeapController input available (no InputActionManager " +
+                              "in scene) — controller-trigger start is disabled this session; use the Space " +
+                              "bar in the Editor instead.");
+        }
     }
 
     void OnDisable()
@@ -119,6 +154,12 @@ public class RandomLauncher : MonoBehaviour
         _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned -= HandleDespawned;
+
+        if (_controllerTriggerSubscribed)
+        {
+            MagicLeapController.Instance.TriggerPressed -= HandleStartTriggerPressed;
+            _controllerTriggerSubscribed = false;
+        }
     }
 
     void Start()
@@ -129,28 +170,24 @@ public class RandomLauncher : MonoBehaviour
                              "Assign a Transform in the Inspector for more realistic shots.");
         }
 
-        if (launchDelay <= 0f)
-        {
-            LaunchBall();
-        }
-        else
-        {
-            _launchTimer = launchDelay;
-            _pendingLaunch = true;
-        }
+        Debug.Log("[RandomLauncher] Waiting for start trigger (controller trigger"
+#if UNITY_EDITOR
+                  + ", or Space in the Editor"
+#endif
+                  + ").");
     }
 
     void Update()
     {
-        if (_pendingLaunch)
-        {
-            _launchTimer -= Time.deltaTime;
-            if (_launchTimer <= 0f)
-            {
-                _pendingLaunch = false;
-                LaunchBall();
-            }
-        }
+        if (_goDisplayTimer > 0f)
+            _goDisplayTimer -= Time.deltaTime;
+
+#if UNITY_EDITOR
+        // Editor-only fallback so the whole start -> countdown -> multi-shot loop can be verified
+        // by pressing Play, without a headset/controller connected. Compiled out of device builds.
+        if (!_sessionRunning && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+            TryStartSession();
+#endif
     }
 
     /// <summary>Called by GoalDetector whenever this ball crosses the gate plane, make or miss,
@@ -162,17 +199,27 @@ public class RandomLauncher : MonoBehaviour
     }
 
     /// <summary>Called by FloorBoundary once the ball despawns after coming to rest on the floor.
-    /// Kicks off the next shot (toward the same quadrant) after <see cref="resetDelay"/>.</summary>
+    /// Continues the session (next shot after a randomized interval) until ShotsPerSession is
+    /// reached, then ends the session.</summary>
     private void HandleDespawned()
     {
-        if (autoLoop)
-            StartCoroutine(AutoLaunchAfterDelay());
+        if (!_sessionRunning) return;
+
+        if (_shotsFiredThisSession >= shotsPerSession)
+        {
+            _sessionRunning = false;
+            Debug.Log($"[RandomLauncher] Session complete ({shotsPerSession} shots fired).");
+            return;
+        }
+
+        StartCoroutine(AutoLaunchAfterDelay());
     }
 
     private IEnumerator AutoLaunchAfterDelay()
     {
-        yield return new WaitForSeconds(resetDelay);
-        LaunchBall();
+        float delay = Random.Range(minShotInterval, maxShotInterval);
+        yield return new WaitForSeconds(delay);
+        FireNextShot();
     }
 
     void FixedUpdate()
@@ -183,11 +230,55 @@ public class RandomLauncher : MonoBehaviour
         }
     }
 
+    // ── Session start ────────────────────────────────────────────
+
+    private void HandleStartTriggerPressed(InputAction.CallbackContext ctx)
+    {
+        TryStartSession();
+    }
+
+    /// <summary>Starts a new session (pre-start countdown, then ShotsPerSession shots) if one
+    /// isn't already running. Safe to call from any start-trigger source.</summary>
+    private void TryStartSession()
+    {
+        if (_sessionRunning) return;
+        StartCoroutine(RunSession());
+    }
+
+    private IEnumerator RunSession()
+    {
+        _sessionRunning = true;
+        _shotsFiredThisSession = 0;
+
+        float delay = Random.Range(minPreStartDelay, maxPreStartDelay);
+        _countdownRemaining = delay;
+        _showCountdown = true;
+        Debug.Log($"[RandomLauncher] Session starting — first shot in {delay:F1}s.");
+
+        while (_countdownRemaining > 0f)
+        {
+            _countdownRemaining -= Time.deltaTime;
+            yield return null;
+        }
+
+        _showCountdown = false;
+        _goDisplayTimer = GoDisplayDuration;
+        FireNextShot();
+    }
+
+    private void FireNextShot()
+    {
+        _shotsFiredThisSession++;
+        LaunchBall();
+    }
+
     // ── Public API ────────────────────────────────────────────────
 
     /// <summary>
     /// Randomly picks one of the four quadrants, logs it, and launches the ball toward it
-    /// using the current <see cref="aimMode"/>. Safe to call from other scripts or Unity Events at any time.
+    /// using the current <see cref="aimMode"/>. Safe to call from other scripts or Unity Events at
+    /// any time — this fires a single shot outside the session flow (session shots call this
+    /// internally via FireNextShot()).
     /// </summary>
     public void LaunchBall()
     {
@@ -282,6 +373,78 @@ public class RandomLauncher : MonoBehaviour
         _falling = true;
 
         Debug.Log("[RandomLauncher] Ball will fall to the floor (custom gravity active).");
+    }
+
+    // ── On-screen countdown (pre-start only) ───────────────────────
+
+    void OnGUI()
+    {
+        if (_showCountdown)
+        {
+            DrawCountdown();
+        }
+        else if (_goDisplayTimer > 0f)
+        {
+            float progress = 1f - (_goDisplayTimer / GoDisplayDuration);
+            DrawPopLabel("GO!", Color.green, progress, animate: true);
+        }
+    }
+
+    private void DrawCountdown()
+    {
+        if (_countdownRemaining > 3f)
+        {
+            DrawPopLabel("GET READY", Color.white, 0f, animate: false);
+            return;
+        }
+
+        int digit = Mathf.Clamp(Mathf.CeilToInt(_countdownRemaining), 1, 3);
+        // fractionInSecond goes 1 (digit just appeared) -> 0 (digit about to change), so
+        // progress goes 0 -> 1 across the digit's one-second window.
+        float fractionInSecond = _countdownRemaining - (digit - 1);
+        float progress = Mathf.Clamp01(1f - fractionInSecond);
+        DrawPopLabel(digit.ToString(), Color.yellow, progress, animate: true);
+    }
+
+    /// <summary>Same scale-pop/fade beat as GoalDetector's "GOAL!" overlay — pure OnGUI, no
+    /// Canvas/TextMesh/prefab required.</summary>
+    private void DrawPopLabel(string text, Color color, float progress, bool animate)
+    {
+        float scale = 1f;
+        float alpha = 1f;
+
+        if (animate)
+        {
+            float eased = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(progress));
+            scale = Mathf.Lerp(2.0f, 1.0f, eased);
+            scale *= 1.0f + 0.05f * Mathf.Sin(eased * Mathf.PI * 4f);
+            alpha = Mathf.Lerp(1f, 0f, Mathf.Clamp01(progress));
+        }
+
+        GUIStyle baseStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 80,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter
+        };
+
+        Matrix4x4 oldMatrix = GUI.matrix;
+        Vector2 pivot = new Vector2(Screen.width * 0.5f, Screen.height * 0.3f + 60f);
+        GUIUtility.ScaleAroundPivot(new Vector2(scale, scale), pivot);
+
+        GUIStyle shadow = new GUIStyle(baseStyle);
+        Color shadowColor = Color.black;
+        shadowColor.a = alpha;
+        shadow.normal.textColor = shadowColor;
+        GUI.Label(new Rect(4f, Screen.height * 0.3f + 4f, Screen.width, 120f), text, shadow);
+
+        GUIStyle fg = new GUIStyle(baseStyle);
+        Color fgColor = color;
+        fgColor.a = alpha;
+        fg.normal.textColor = fgColor;
+        GUI.Label(new Rect(0f, Screen.height * 0.3f, Screen.width, 120f), text, fg);
+
+        GUI.matrix = oldMatrix;
     }
 
     // ── Gizmos ───────────────────────────────────────────────────
