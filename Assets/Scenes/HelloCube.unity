@@ -654,6 +654,7 @@ GameObject:
   - component: {fileID: 866954155}
   - component: {fileID: 866954161}
   - component: {fileID: 866954162}
+  - component: {fileID: 866954163}
   m_Layer: 0
   m_Name: LacrosseBall
   m_TagString: Untagged
@@ -793,7 +794,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalDetector
   goalGateCenter: {x: -0.75, y: 1, z: 0.75}
-  goalGateHalfSize: {x: -0.75, y: 1}
+  goalGateHalfSize: {x: 0.75, y: 1}
   showOnScreenGoal: 0
 --- !u!114 &866954162
 MonoBehaviour:
@@ -816,6 +817,22 @@ MonoBehaviour:
   autoResetOnLaunch: 1
   enableCustomGravityOnGoal: 1
   customGravity: 9.81
+--- !u!114 &866954163
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866954152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b0d16b47e762d84d93990c4e2611218, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::FloorBoundary
+  floorY: 0
+  cancelDownwardVelocity: 1
+  bounceOnFloor: 0
+  bounciness: 0.5
 --- !u!4 &934791496 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,

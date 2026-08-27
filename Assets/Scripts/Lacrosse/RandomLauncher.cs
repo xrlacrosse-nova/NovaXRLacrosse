@@ -1,27 +1,33 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 /// <summary>
-/// Launches the lacrosse ball toward a RANDOM point inside a chosen quadrant of the
-/// goal gate defined in GoalDetector (must be on the same GameObject).
+/// Launches the lacrosse ball toward a chosen quadrant of the goal gate defined in
+/// GoalDetector (must be on the same GameObject). Supports two aim modes:
+///   - RandomInQuadrant: a uniformly-random point inside the quadrant (no two shots alike).
+///   - FixedPoint: a deterministic point, interpolated from the quadrant's center toward its
+///     outer corner by QuadrantDepth (0 = center, 1 = corner).
 ///
 /// Quadrant layout (facing the goal):
 ///   TopLeft    | TopRight
 ///   -----------+-----------
 ///   BottomLeft | BottomRight
 ///
-/// Each shot picks a uniformly-random position within the selected quadrant's bounds,
-/// so no two launches go to exactly the same spot.
-///
 /// Setup:
 ///   1. Attach this script to the ball GameObject that also has GoalDetector + Rigidbody.
 ///   2. Set LaunchOrigin to a Transform positioned where shots come from (e.g. an empty at player position).
-///   3. Pick a Quadrant and press Play – the ball will launch automatically.
+///   3. Pick an AimMode, a Quadrant, and press Play – the ball will launch automatically.
 ///      Alternatively, call LaunchBall() from any other script or Unity Event.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(GoalDetector))]
 public class RandomLauncher : MonoBehaviour
 {
+    public enum AimMode
+    {
+        RandomInQuadrant,
+        FixedPoint
+    }
+
     // ── Inspector ─────────────────────────────────────────────────
 
     [Header("Shot Setup")]
@@ -31,11 +37,21 @@ public class RandomLauncher : MonoBehaviour
     [Tooltip("Which quadrant of the goal to aim at.")]
     public Quadrant targetQuadrant = Quadrant.TopLeft;
 
-    [Header("Random Target")]
+    [Tooltip("RandomInQuadrant = a different random point inside the quadrant every shot. " +
+             "FixedPoint = the same deterministic point every shot (see QuadrantDepth).")]
+    public AimMode aimMode = AimMode.RandomInQuadrant;
+
+    [Header("Random Aim (used when AimMode = RandomInQuadrant)")]
     [Tooltip("Inset from each quadrant edge as a fraction of the quadrant's half-size. " +
              "Increase this to keep shots away from the very edges (e.g. 0.05 = 5% padding).")]
     [Range(0f, 0.45f)]
     public float edgePadding = 0.05f;
+
+    [Header("Fixed-Point Aim (used when AimMode = FixedPoint)")]
+    [Tooltip("0 = dead-center of the quadrant. 1 = touching the quadrant boundary. " +
+             "Use ~0.6-0.8 for realistic tight-corner shots.")]
+    [Range(0f, 1f)]
+    public float quadrantDepth = 0.65f;
 
     [Header("Launch Physics")]
     [Tooltip("Overall launch speed (m/s). Actual velocity is computed to hit the target; " +
@@ -51,9 +67,9 @@ public class RandomLauncher : MonoBehaviour
              "each time LaunchBall() is called, so you can test repeatedly in the editor.")]
     public bool autoResetOnLaunch = true;
 
-    [Header("Post-Goal Falling")]
-    [Tooltip("If true, when the ball scores the launcher will apply custom gravity to make the ball fall to the floor. " +
-             "Use when Unity's global gravity is turned off.")]
+    [Header("Post-Crossing Falling")]
+    [Tooltip("If true, once the ball crosses the goal plane (make or miss) the launcher will apply " +
+             "custom gravity to make it fall to the floor. Use when Unity's global gravity is turned off.")]
     public bool enableCustomGravityOnGoal = true;
 
     [Tooltip("Downward acceleration (m/s^2) applied while the ball is falling. ~9.81 mimics Earth gravity.")]
@@ -69,7 +85,7 @@ public class RandomLauncher : MonoBehaviour
     // falling state
     private bool _falling = false;
 
-    // last random target (used by Gizmos to show where the next/last shot went)
+    // last target (used by Gizmos to show where the next/last shot went)
     private Vector3 _lastTarget;
     private bool _hasTarget = false;
 
@@ -83,12 +99,12 @@ public class RandomLauncher : MonoBehaviour
 
     void OnEnable()
     {
-        _goalDetector.OnGoalScored += HandleGoalScored;
+        _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
     }
 
     void OnDisable()
     {
-        _goalDetector.OnGoalScored -= HandleGoalScored;
+        _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
     }
 
     void Start()
@@ -123,8 +139,9 @@ public class RandomLauncher : MonoBehaviour
         }
     }
 
-    /// <summary>Called by GoalDetector when this ball crosses the plane inside the gate.</summary>
-    private void HandleGoalScored(Vector3 crossingPos)
+    /// <summary>Called by GoalDetector whenever this ball crosses the gate plane, make or miss,
+    /// so the ball always has a defined path (falling to the floor) past the plane.</summary>
+    private void HandlePlaneCrossed(Vector3 crossingPos)
     {
         if (enableCustomGravityOnGoal)
             BeginFalling();
@@ -141,7 +158,7 @@ public class RandomLauncher : MonoBehaviour
     // ── Public API ────────────────────────────────────────────────
 
     /// <summary>
-    /// Launches the ball toward a random point inside <see cref="targetQuadrant"/>.
+    /// Launches the ball toward <see cref="targetQuadrant"/> using the current <see cref="aimMode"/>.
     /// Safe to call from other scripts or Unity Events at any time.
     /// </summary>
     public void LaunchBall()
@@ -150,7 +167,7 @@ public class RandomLauncher : MonoBehaviour
     }
 
     /// <summary>
-    /// Launches toward a random point inside a specific quadrant, overriding the Inspector selection.
+    /// Launches toward a specific quadrant, overriding the Inspector selection.
     /// Useful for scripted sequences or AI-driven shot selection.
     /// </summary>
     public void LaunchToward(Quadrant quadrant)
@@ -178,8 +195,8 @@ public class RandomLauncher : MonoBehaviour
             _falling = false;
         }
 
-        // ── 3. Pick a random target inside the chosen quadrant ───
-        Vector3 target = ComputeRandomQuadrantTarget(quadrant);
+        // ── 3. Pick a target inside the chosen quadrant ──────────
+        Vector3 target = ComputeTarget(quadrant);
         _lastTarget = target;
         _hasTarget = true;
 
@@ -200,21 +217,23 @@ public class RandomLauncher : MonoBehaviour
 
         _goalDetector.OnBallLaunched();
 
-        Debug.Log($"[RandomLauncher] Shot fired → {quadrant} | " +
-                  $"random target ({target.x:F2}, {target.y:F2}, {target.z:F2}) | " +
+        Debug.Log($"[RandomLauncher] Shot fired → {quadrant} ({aimMode}) | " +
+                  $"target ({target.x:F2}, {target.y:F2}, {target.z:F2}) | " +
                   $"speed {launchVelocity.magnitude:F1} m/s");
     }
 
     // ── Private helpers ───────────────────────────────────────────
 
     /// <summary>
-    /// Returns a uniformly-random world-space point inside the requested quadrant,
-    /// inset from the edges by <see cref="edgePadding"/>.
+    /// Returns the world-space aim point inside the requested quadrant, per the current AimMode.
     /// </summary>
-    Vector3 ComputeRandomQuadrantTarget(Quadrant quadrant)
+    Vector3 ComputeTarget(Quadrant quadrant)
     {
-        return QuadrantMath.ComputeRandomPointInQuadrant(
-            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, quadrant, edgePadding);
+        return aimMode == AimMode.RandomInQuadrant
+            ? QuadrantMath.ComputeRandomPointInQuadrant(
+                _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, quadrant, edgePadding)
+            : QuadrantMath.ComputePointInQuadrant(
+                _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, quadrant, quadrantDepth);
     }
 
     /// <summary>
@@ -243,36 +262,55 @@ public class RandomLauncher : MonoBehaviour
         Vector3 center = _goalDetector.goalGateCenter;
         Vector2 half = _goalDetector.goalGateHalfSize;
 
-        // Draw the usable (padded) bounds for each quadrant.
         Quadrant[] quads = (Quadrant[])System.Enum.GetValues(typeof(Quadrant));
         Color[] colors = { Color.red, Color.green, Color.blue, Color.yellow };
 
-        for (int i = 0; i < quads.Length; i++)
+        if (aimMode == AimMode.RandomInQuadrant)
         {
-            float hx = half.x * 0.5f;
-            float hy = half.y * 0.5f;
+            // Draw the usable (padded) bounds for each quadrant.
+            for (int i = 0; i < quads.Length; i++)
+            {
+                float hx = half.x * 0.5f;
+                float hy = half.y * 0.5f;
 
-            Vector3 quadCenter = QuadrantMath.QuadrantCenter(center, half, quads[i]);
-            float usableHx = hx * (1f - edgePadding);
-            float usableHy = hy * (1f - edgePadding);
+                Vector3 quadCenter = QuadrantMath.QuadrantCenter(center, half, quads[i]);
+                float usableHx = hx * (1f - edgePadding);
+                float usableHy = hy * (1f - edgePadding);
 
-            // Draw the padded boundary as a wire rectangle.
-            Gizmos.color = new Color(colors[i].r, colors[i].g, colors[i].b, 0.4f);
-            Vector3 tl = quadCenter + new Vector3(-usableHx, usableHy, 0f);
-            Vector3 tr = quadCenter + new Vector3(usableHx, usableHy, 0f);
-            Vector3 bl = quadCenter + new Vector3(-usableHx, -usableHy, 0f);
-            Vector3 br = quadCenter + new Vector3(usableHx, -usableHy, 0f);
-            Gizmos.DrawLine(tl, tr);
-            Gizmos.DrawLine(tr, br);
-            Gizmos.DrawLine(br, bl);
-            Gizmos.DrawLine(bl, tl);
+                Gizmos.color = new Color(colors[i].r, colors[i].g, colors[i].b, 0.4f);
+                Vector3 tl = quadCenter + new Vector3(-usableHx, usableHy, 0f);
+                Vector3 tr = quadCenter + new Vector3(usableHx, usableHy, 0f);
+                Vector3 bl = quadCenter + new Vector3(-usableHx, -usableHy, 0f);
+                Vector3 br = quadCenter + new Vector3(usableHx, -usableHy, 0f);
+                Gizmos.DrawLine(tl, tr);
+                Gizmos.DrawLine(tr, br);
+                Gizmos.DrawLine(br, bl);
+                Gizmos.DrawLine(bl, tl);
 
-            // Dot at quadrant centre.
-            Gizmos.color = colors[i];
-            Gizmos.DrawSphere(quadCenter, 0.03f);
+                Gizmos.color = colors[i];
+                Gizmos.DrawSphere(quadCenter, 0.03f);
+            }
+        }
+        else
+        {
+            // Draw the fixed aim point for each quadrant.
+            for (int i = 0; i < quads.Length; i++)
+            {
+                Vector3 t = QuadrantMath.ComputePointInQuadrant(center, half, quads[i], quadrantDepth);
+                Gizmos.color = colors[i];
+                Gizmos.DrawSphere(t, 0.04f);
+
+                Gizmos.color = new Color(colors[i].r, colors[i].g, colors[i].b, 0.25f);
+                Gizmos.DrawLine(origin, t);
+            }
+
+            // Highlight the currently selected quadrant with a larger sphere.
+            Vector3 selected = QuadrantMath.ComputePointInQuadrant(center, half, targetQuadrant, quadrantDepth);
+            Gizmos.color = Color.white;
+            Gizmos.DrawWireSphere(selected, 0.08f);
         }
 
-        // Show the last random target (bright white sphere + line from origin).
+        // Show the last actual launch target (bright white sphere + line from origin).
         if (_hasTarget)
         {
             Gizmos.color = Color.white;
