@@ -79,6 +79,7 @@ public class RandomLauncher : MonoBehaviour
 
     private Rigidbody _rb;
     private GoalDetector _goalDetector;
+    private FloorBoundary _floorBoundary;
     private float _launchTimer;
     private bool _pendingLaunch;
 
@@ -95,6 +96,7 @@ public class RandomLauncher : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody>();
         _goalDetector = GetComponent<GoalDetector>();
+        _floorBoundary = GetComponent<FloorBoundary>();
     }
 
     void OnEnable()
@@ -179,6 +181,7 @@ public class RandomLauncher : MonoBehaviour
         if (autoResetOnLaunch)
         {
             _goalDetector.ResetState();
+            _floorBoundary?.CancelDespawn();
 
             _rb.isKinematic = false;
             _rb.useGravity = false;

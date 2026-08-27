@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -12,7 +13,7 @@ public class FloorBoundary : MonoBehaviour
     public float floorY = 0f;
 
     [Header("Physics Settings")]
-    [Tooltip("If true, zeroes out downward velocity when the floor is hit (Rigidbody only).")]
+    [Tooltip("If true, zeroes out all velocity (not just vertical) when the floor is hit (Rigidbody only).")]
     public bool cancelDownwardVelocity = true;
 
     [Tooltip("If true, a bounce impulse is applied when the floor is hit (Rigidbody only).")]
@@ -22,14 +23,26 @@ public class FloorBoundary : MonoBehaviour
     [Tooltip("Fraction of vertical velocity reflected back on bounce (0 = no bounce, 1 = full bounce).")]
     public float bounciness = 0.5f;
 
+    [Header("Despawn Settings")]
+    [Tooltip("If true, the object is hidden and disabled a short time after it comes to rest on the floor.")]
+    public bool despawnAfterLanding = true;
+
+    [Tooltip("Seconds to wait after coming to rest before despawning.")]
+    public float despawnDelay = 1f;
+
     // Cached components
     private Rigidbody _rb;
     private bool _hasRigidbody;
+    private Renderer _renderer;
+    private Collider _collider;
+    private Coroutine _despawnRoutine;
 
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         _hasRigidbody = _rb != null;
+        _renderer = GetComponent<Renderer>();
+        _collider = GetComponent<Collider>();
     }
 
     private void Update()
@@ -87,16 +100,53 @@ public class FloorBoundary : MonoBehaviour
                 {
                     // Reflect the vertical component
                     vel.y = Mathf.Abs(vel.y) * bounciness;
+                    _rb.linearVelocity = vel;
                 }
                 else if (cancelDownwardVelocity)
                 {
-                    // Kill vertical velocity entirely
-                    vel.y = 0f;
-                }
+                    // Kill all velocity, not just vertical, so the ball comes to a
+                    // dead stop instead of sliding across the floor on its leftover
+                    // horizontal speed.
+                    _rb.linearVelocity = Vector3.zero;
+                    _rb.angularVelocity = Vector3.zero;
 
-                _rb.linearVelocity = vel;
+                    if (despawnAfterLanding && _despawnRoutine == null)
+                        _despawnRoutine = StartCoroutine(DespawnAfterDelay());
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Waits <see cref="despawnDelay"/> seconds after the object has come to rest,
+    /// then hides it and disables its physics until <see cref="CancelDespawn"/> is called.
+    /// </summary>
+    private IEnumerator DespawnAfterDelay()
+    {
+        yield return new WaitForSeconds(despawnDelay);
+
+        if (_renderer != null) _renderer.enabled = false;
+        if (_collider != null) _collider.enabled = false;
+        if (_hasRigidbody) _rb.isKinematic = true;
+
+        _despawnRoutine = null;
+    }
+
+    /// <summary>
+    /// Cancels any pending or already-applied despawn and makes the object visible/active
+    /// again. Call this before relaunching the ball so it reappears for the next shot.
+    /// </summary>
+    public void CancelDespawn()
+    {
+        if (_despawnRoutine != null)
+        {
+            StopCoroutine(_despawnRoutine);
+            _despawnRoutine = null;
+        }
+
+        if (_renderer != null) _renderer.enabled = true;
+        if (_collider != null) _collider.enabled = true;
+        if (_hasRigidbody) _rb.isKinematic = false;
     }
 
     /// <summary>
