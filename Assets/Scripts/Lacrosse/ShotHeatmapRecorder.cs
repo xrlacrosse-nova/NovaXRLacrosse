@@ -23,11 +23,18 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     [Tooltip("Radius (in pixels) of each plotted shot marker.")]
     [Range(2f, 20f)]
-    public float dotRadius = 6f;
+    public float dotRadius = 9f;
 
     [Tooltip("Width of the heatmap box on screen, as a fraction of screen width.")]
     [Range(0.1f, 0.9f)]
-    public float boxWidthFraction = 0.4f;
+    public float boxWidthFraction = 0.55f;
+
+    [Tooltip("Vertical position of the heatmap box, as a fraction of screen height down from the top. Lower = higher on screen.")]
+    [Range(0f, 0.8f)]
+    public float boxVerticalPosition = 0.3f;
+
+    [Tooltip("Solid fill color behind the heatmap grid, so it stays visible against a black/passthrough background.")]
+    public Color backgroundColor = new Color(1f, 1f, 1f, 0.25f);
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -135,7 +142,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
         Vector2 half = _goalDetector.goalGateHalfSize;
         float boxWidth = Screen.width * boxWidthFraction;
         float boxHeight = boxWidth * (half.y / half.x);
-        Rect box = new Rect((Screen.width - boxWidth) * 0.5f, Screen.height * 0.55f, boxWidth, boxHeight);
+        Rect box = new Rect((Screen.width - boxWidth) * 0.5f, Screen.height * boxVerticalPosition, boxWidth, boxHeight);
 
         int goals = 0;
         for (int i = 0; i < _scored.Count; i++)
@@ -143,13 +150,14 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         GUIStyle titleStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 32,
+            fontSize = 44,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter
         };
-        GUI.Label(new Rect(box.x, box.y - 50f, box.width, 40f),
+        GUI.Label(new Rect(box.x, box.y - 60f, box.width, 50f),
                   $"SHOT HEATMAP — {goals}/{_points.Count} scored", titleStyle);
 
+        DrawFilledRect(box, backgroundColor);
         GUI.Box(box, GUIContent.none);
 
         for (int i = 0; i < _points.Count; i++)
@@ -167,6 +175,14 @@ public class ShotHeatmapRecorder : MonoBehaviour
         Color prev = GUI.color;
         GUI.color = color;
         GUI.DrawTexture(new Rect(centerX - radius, centerY - radius, radius * 2f, radius * 2f), DotTexture);
+        GUI.color = prev;
+    }
+
+    private static void DrawFilledRect(Rect rect, Color color)
+    {
+        Color prev = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(rect, DotTexture);
         GUI.color = prev;
     }
 }
