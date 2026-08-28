@@ -58,4 +58,25 @@ public static class QuadrantMath
 
     private static float SignY(Quadrant quadrant) =>
         (quadrant == Quadrant.TopLeft || quadrant == Quadrant.TopRight) ? 1f : -1f;
+
+    /// <summary>
+    /// Launch velocity that sends a gravity-free shot from <paramref name="origin"/> straight
+    /// through <paramref name="target"/> at <paramref name="launchSpeed"/>.
+    ///
+    /// The ball launchers fly with no gravity applied mid-flight, so this always aims directly
+    /// at the target — any vertical bias layered on top of that direction (e.g. for a cosmetic
+    /// arc) would aim the ball away from target with nothing left to curve it back onto that
+    /// line, which is exactly the bug this replaced. A real arc needs gravity active for the
+    /// whole flight and a velocity solved to pass through target under it (see
+    /// Plans/BallLauncher_Plan.md, Option B) — not implemented here.
+    /// </summary>
+    public static Vector3 ComputeLaunchVelocity(Vector3 origin, Vector3 target, float launchSpeed)
+    {
+        Vector3 delta = target - origin;
+
+        if (delta.sqrMagnitude < 0.001f * 0.001f)
+            return Vector3.forward * launchSpeed;
+
+        return delta.normalized * launchSpeed;
+    }
 }
