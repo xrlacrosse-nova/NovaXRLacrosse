@@ -15,15 +15,15 @@ using UnityEngine;
 public class ShotHeatmapRecorder : MonoBehaviour
 {
     [Header("Visualization")]
-    [Tooltip("Color for shots that scored.")]
-    public Color goalColor = Color.green;
+    [Tooltip("Color for shots that scored (bad outcome — the goalie let it in).")]
+    public Color scoreColor = Color.red;
 
-    [Tooltip("Color for shots that missed.")]
-    public Color missColor = Color.red;
+    [Tooltip("Color for shots that were saved (good outcome — the goalie kept it out).")]
+    public Color saveColor = Color.green;
 
     [Tooltip("Radius (in pixels) of each plotted shot marker.")]
-    [Range(2f, 20f)]
-    public float dotRadius = 9f;
+    [Range(2f, 28f)]
+    public float dotRadius = 13f;
 
     [Tooltip("Width of the heatmap box on screen, as a fraction of screen width.")]
     [Range(0.1f, 0.9f)]
@@ -35,6 +35,13 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     [Tooltip("Solid fill color behind the heatmap grid, so it stays visible against a black/passthrough background.")]
     public Color backgroundColor = new Color(1f, 1f, 1f, 0.25f);
+
+    [Tooltip("Color of the crosshair lines dividing the grid into the four aim quadrants.")]
+    public Color quadrantLineColor = new Color(1f, 1f, 1f, 0.6f);
+
+    [Tooltip("Thickness (in pixels) of the quadrant divider lines.")]
+    [Range(1f, 6f)]
+    public float quadrantLineThickness = 2f;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -144,9 +151,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
         float boxHeight = boxWidth * (half.y / half.x);
         Rect box = new Rect((Screen.width - boxWidth) * 0.5f, Screen.height * boxVerticalPosition, boxWidth, boxHeight);
 
-        int goals = 0;
+        int scores = 0;
         for (int i = 0; i < _scored.Count; i++)
-            if (_scored[i]) goals++;
+            if (_scored[i]) scores++;
+        int saves = _points.Count - scores;
 
         GUIStyle titleStyle = new GUIStyle(GUI.skin.label)
         {
@@ -155,10 +163,11 @@ public class ShotHeatmapRecorder : MonoBehaviour
             alignment = TextAnchor.MiddleCenter
         };
         GUI.Label(new Rect(box.x, box.y - 60f, box.width, 50f),
-                  $"SHOT HEATMAP — {goals}/{_points.Count} scored", titleStyle);
+                  $"SHOT HEATMAP — {saves}/{_points.Count} saved", titleStyle);
 
         DrawFilledRect(box, backgroundColor);
         GUI.Box(box, GUIContent.none);
+        DrawQuadrantLines(box);
 
         for (int i = 0; i < _points.Count; i++)
         {
@@ -166,8 +175,20 @@ public class ShotHeatmapRecorder : MonoBehaviour
             float px = box.x + (_points[i].x * 0.5f + 0.5f) * box.width;
             float py = box.y + (1f - (_points[i].y * 0.5f + 0.5f)) * box.height;
 
-            DrawDot(px, py, dotRadius, _scored[i] ? goalColor : missColor);
+            DrawDot(px, py, dotRadius, _scored[i] ? scoreColor : saveColor);
         }
+    }
+
+    /// <summary>Draws a crosshair through the center of the box, splitting it into the same four
+    /// aim quadrants (TopLeft/TopRight/BottomLeft/BottomRight) the launchers target.</summary>
+    private void DrawQuadrantLines(Rect box)
+    {
+        float half = quadrantLineThickness * 0.5f;
+        float midX = box.x + box.width * 0.5f;
+        float midY = box.y + box.height * 0.5f;
+
+        DrawFilledRect(new Rect(midX - half, box.y, quadrantLineThickness, box.height), quadrantLineColor);
+        DrawFilledRect(new Rect(box.x, midY - half, box.width, quadrantLineThickness), quadrantLineColor);
     }
 
     private static void DrawDot(float centerX, float centerY, float radius, Color color)
