@@ -679,6 +679,7 @@ GameObject:
   - component: {fileID: 866954161}
   - component: {fileID: 866954162}
   - component: {fileID: 866954163}
+  - component: {fileID: 866954164}
   m_Layer: 0
   m_Name: LacrosseBall
   m_TagString: Untagged
@@ -833,15 +834,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomLauncher
   launchOrigin: {fileID: 700000002}
-  targetQuadrant: 0
   aimMode: 0
   edgePadding: 0.05
   quadrantDepth: 0.65
   launchSpeed: 2
-  launchDelay: 0.5
   autoResetOnLaunch: 1
   enableCustomGravityOnGoal: 1
   customGravity: 9.81
+  shotsPerSession: 3
+  minPreStartDelay: 3
+  maxPreStartDelay: 5
+  minShotInterval: 3
+  maxShotInterval: 5
 --- !u!114 &866954163
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -858,6 +862,28 @@ MonoBehaviour:
   cancelDownwardVelocity: 1
   bounceOnFloor: 0
   bounciness: 0.5
+  despawnAfterLanding: 1
+  despawnDelay: 1
+--- !u!114 &866954164
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866954152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a8deab5559ce184a89a1a1fa017ee47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShotHeatmapRecorder
+  scoreColor: {r: 1, g: 0, b: 0, a: 1}
+  saveColor: {r: 0, g: 1, b: 0, a: 1}
+  dotRadius: 19.2
+  boxWidthFraction: 0.4
+  boxVerticalPosition: 0.3
+  backgroundColor: {r: 1, g: 1, b: 1, a: 0.25}
+  quadrantLineColor: {r: 1, g: 1, b: 1, a: 0.6}
+  quadrantLineThickness: 2
 --- !u!4 &934791496 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,
