@@ -78,7 +78,7 @@ public class RandomLauncher : MonoBehaviour
     [Header("Session")]
     [Tooltip("Number of shots fired per session, once started.")]
     [Min(1)]
-    public int shotsPerSession = 10;
+    public int shotsPerSession = 3;
 
     [Tooltip("Seconds after the start trigger before the first shot fires. Randomized per session.")]
     [Min(0f)]
