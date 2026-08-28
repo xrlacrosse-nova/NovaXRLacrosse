@@ -117,6 +117,14 @@ public class RandomLauncher : MonoBehaviour
     private bool _hasTarget = false;
     private Quadrant _lastQuadrant;
 
+    // ── Events ───────────────────────────────────────────────────
+
+    /// <summary>Fired when a new session begins (right as the pre-start countdown starts).</summary>
+    public event System.Action OnSessionStarted;
+
+    /// <summary>Fired once a session completes (all ShotsPerSession shots fired and despawned).</summary>
+    public event System.Action OnSessionEnded;
+
     // ── Lifecycle ─────────────────────────────────────────────────
 
     void Awake()
@@ -209,6 +217,7 @@ public class RandomLauncher : MonoBehaviour
         {
             _sessionRunning = false;
             Debug.Log($"[RandomLauncher] Session complete ({shotsPerSession} shots fired).");
+            OnSessionEnded?.Invoke();
             return;
         }
 
@@ -249,6 +258,7 @@ public class RandomLauncher : MonoBehaviour
     {
         _sessionRunning = true;
         _shotsFiredThisSession = 0;
+        OnSessionStarted?.Invoke();
 
         float delay = Random.Range(minPreStartDelay, maxPreStartDelay);
         _countdownRemaining = delay;
