@@ -203,8 +203,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 500
-  m_fontSizeBase: 500
+  m_fontSize: 400
+  m_fontSizeBase: 400
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -972,7 +972,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 685}
+  m_AnchoredPosition: {x: 0, y: 959}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &833203112
@@ -1292,10 +1292,11 @@ MonoBehaviour:
   scoreColor: {r: 1, g: 0, b: 0, a: 1}
   saveColor: {r: 0, g: 1, b: 0, a: 1}
   dotSize: 26
-  heatmapPanel: {fileID: 0}
-  heatmapTitle: {fileID: 0}
-  dotPrefab: {fileID: 0}
-  dotContainer: {fileID: 0}
+  heatmapPanel: {fileID: 1587744145}
+  heatmapTitle: {fileID: 833203112}
+  dotPrefab: {fileID: 2107484640309600893, guid: 0aeb73c6b9661044abf6e6e5bbc43910,
+    type: 3}
+  dotContainer: {fileID: 383481017}
 --- !u!4 &934791496 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,
