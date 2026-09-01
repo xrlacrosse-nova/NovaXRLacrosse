@@ -1,4 +1,5 @@
 ﻿using System;
+using TMPro;
 using UnityEngine;
 
 /// <summary>
@@ -28,6 +29,9 @@ public class GoalDetector : MonoBehaviour
     [Header("UI")]
     [Tooltip("Show a GOAL! overlay when the ball scores.")]
     public bool showOnScreenGoal = true;
+
+    [Tooltip("TextMeshPro label used for the GOAL! popup. Leave unassigned to disable.")]
+    public TextMeshProUGUI goalText;
 
     // ── state ─────────────────────────────────────────────────────
 
@@ -62,6 +66,8 @@ public class GoalDetector : MonoBehaviour
         // Tick the GOAL! display countdown
         if (_displayTimer > 0f)
             _displayTimer -= Time.deltaTime;
+
+        UpdateGoalText();
 
         if (!_active || _goalScored) return;
 
@@ -129,9 +135,17 @@ public class GoalDetector : MonoBehaviour
 
     // ── on-screen UI ──────────────────────────────────────────────
 
-    void OnGUI()
+    /// <summary>Same scale-pop/fade beat as the old OnGUI overlay, now applied to a
+    /// world-space TextMeshPro label instead of an IMGUI Rect.</summary>
+    private void UpdateGoalText()
     {
-        if (!showOnScreenGoal || _displayTimer <= 0f) return;
+        if (goalText == null) return;
+
+        if (!showOnScreenGoal || _displayTimer <= 0f)
+        {
+            goalText.gameObject.SetActive(false);
+            return;
+        }
 
         // progress goes 0 -> 1 over DisplayDuration
         float progress = 1f - (_displayTimer / DisplayDuration);
@@ -145,34 +159,13 @@ public class GoalDetector : MonoBehaviour
         // fade out over time
         float alpha = Mathf.Lerp(1f, 0f, Mathf.Clamp01(progress));
 
-        GUIStyle baseStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 80,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
+        goalText.gameObject.SetActive(true);
+        goalText.text = "GOAL!";
 
-        // Apply scale transform around the label center
-        Matrix4x4 oldMatrix = GUI.matrix;
-        Vector2 pivot = new Vector2(Screen.width * 0.5f, Screen.height * 0.3f + 60f);
-        GUIUtility.ScaleAroundPivot(new Vector2(scale, scale), pivot);
-
-        // Shadow
-        GUIStyle shadow = new GUIStyle(baseStyle);
-        Color shadowColor = Color.black;
-        shadowColor.a = alpha;
-        shadow.normal.textColor = shadowColor;
-        GUI.Label(new Rect(4f, Screen.height * 0.3f + 4f, Screen.width, 120f), "GOAL!", shadow);
-
-        // Foreground
-        GUIStyle fg = new GUIStyle(baseStyle);
-        Color fgColor = Color.yellow;
-        fgColor.a = alpha;
-        fg.normal.textColor = fgColor;
-        GUI.Label(new Rect(0f, Screen.height * 0.3f, Screen.width, 120f), "GOAL!", fg);
-
-        // Restore GUI matrix
-        GUI.matrix = oldMatrix;
+        Color color = Color.yellow;
+        color.a = alpha;
+        goalText.color = color;
+        goalText.rectTransform.localScale = Vector3.one * scale;
     }
 
     // ── Gizmos ────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using MagicLeap.Examples;
@@ -91,6 +92,10 @@ public class RandomLauncher : MonoBehaviour
     public float minShotInterval = 5f;
     [Min(0f)]
     public float maxShotInterval = 10f;
+
+    [Header("UI (World Space Canvas)")]
+    [Tooltip("TextMeshPro label used for GET READY / countdown digits / GO!. Leave unassigned to disable.")]
+    public TextMeshProUGUI countdownText;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -196,6 +201,8 @@ public class RandomLauncher : MonoBehaviour
         if (!_sessionRunning && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
             TryStartSession();
 #endif
+
+        UpdateCountdownText();
     }
 
     /// <summary>Called by GoalDetector whenever this ball crosses the gate plane, make or miss,
@@ -387,8 +394,10 @@ public class RandomLauncher : MonoBehaviour
 
     // ── On-screen countdown (pre-start only) ───────────────────────
 
-    void OnGUI()
+    private void UpdateCountdownText()
     {
+        if (countdownText == null) return;
+
         if (_showCountdown)
         {
             DrawCountdown();
@@ -396,7 +405,11 @@ public class RandomLauncher : MonoBehaviour
         else if (_goDisplayTimer > 0f)
         {
             float progress = 1f - (_goDisplayTimer / GoDisplayDuration);
-            DrawPopLabel("GO!", Color.green, progress, animate: true);
+            SetLabel("GO!", Color.green, progress, animate: true);
+        }
+        else
+        {
+            countdownText.gameObject.SetActive(false);
         }
     }
 
@@ -404,7 +417,7 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_countdownRemaining > 3f)
         {
-            DrawPopLabel("GET READY", Color.white, 0f, animate: false);
+            SetLabel("GET READY", Color.white, 0f, animate: false);
             return;
         }
 
@@ -413,12 +426,12 @@ public class RandomLauncher : MonoBehaviour
         // progress goes 0 -> 1 across the digit's one-second window.
         float fractionInSecond = _countdownRemaining - (digit - 1);
         float progress = Mathf.Clamp01(1f - fractionInSecond);
-        DrawPopLabel(digit.ToString(), Color.yellow, progress, animate: true);
+        SetLabel(digit.ToString(), Color.yellow, progress, animate: true);
     }
 
-    /// <summary>Same scale-pop/fade beat as GoalDetector's "GOAL!" overlay — pure OnGUI, no
-    /// Canvas/TextMesh/prefab required.</summary>
-    private void DrawPopLabel(string text, Color color, float progress, bool animate)
+    /// <summary>Same scale-pop/fade beat as the old OnGUI overlay, now applied to a
+    /// world-space TextMeshPro label instead of an IMGUI Rect.</summary>
+    private void SetLabel(string text, Color color, float progress, bool animate)
     {
         float scale = 1f;
         float alpha = 1f;
@@ -431,30 +444,12 @@ public class RandomLauncher : MonoBehaviour
             alpha = Mathf.Lerp(1f, 0f, Mathf.Clamp01(progress));
         }
 
-        GUIStyle baseStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 80,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
+        countdownText.gameObject.SetActive(true);
+        countdownText.text = text;
 
-        Matrix4x4 oldMatrix = GUI.matrix;
-        Vector2 pivot = new Vector2(Screen.width * 0.5f, Screen.height * 0.3f + 60f);
-        GUIUtility.ScaleAroundPivot(new Vector2(scale, scale), pivot);
-
-        GUIStyle shadow = new GUIStyle(baseStyle);
-        Color shadowColor = Color.black;
-        shadowColor.a = alpha;
-        shadow.normal.textColor = shadowColor;
-        GUI.Label(new Rect(4f, Screen.height * 0.3f + 4f, Screen.width, 120f), text, shadow);
-
-        GUIStyle fg = new GUIStyle(baseStyle);
-        Color fgColor = color;
-        fgColor.a = alpha;
-        fg.normal.textColor = fgColor;
-        GUI.Label(new Rect(0f, Screen.height * 0.3f, Screen.width, 120f), text, fg);
-
-        GUI.matrix = oldMatrix;
+        color.a = alpha;
+        countdownText.color = color;
+        countdownText.rectTransform.localScale = Vector3.one * scale;
     }
 
     // ── Gizmos ───────────────────────────────────────────────────
