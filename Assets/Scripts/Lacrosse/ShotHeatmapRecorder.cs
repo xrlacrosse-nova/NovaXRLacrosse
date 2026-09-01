@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// Records where each shot crosses the goal plane during a session and displays a heatmap once
@@ -21,27 +23,24 @@ public class ShotHeatmapRecorder : MonoBehaviour
     [Tooltip("Color for shots that were saved (good outcome — the goalie kept it out).")]
     public Color saveColor = Color.green;
 
-    [Tooltip("Radius (in pixels) of each plotted shot marker.")]
-    [Range(2f, 28f)]
-    public float dotRadius = 13f;
+    [Tooltip("Diameter (in UI units) of each plotted shot dot.")]
+    [Range(4f, 60f)]
+    public float dotSize = 26f;
 
-    [Tooltip("Width of the heatmap box on screen, as a fraction of screen width.")]
-    [Range(0.1f, 0.9f)]
-    public float boxWidthFraction = 0.55f;
+    [Header("UI (World Space Canvas)")]
+    [Tooltip("Root panel toggled active/inactive to show or hide the whole heatmap. Leave unassigned to disable.")]
+    public GameObject heatmapPanel;
 
-    [Tooltip("Vertical position of the heatmap box, as a fraction of screen height down from the top. Lower = higher on screen.")]
-    [Range(0f, 0.8f)]
-    public float boxVerticalPosition = 0.3f;
+    [Tooltip("TextMeshPro label showing 'SHOT HEATMAP — X/Y saved'.")]
+    public TextMeshProUGUI heatmapTitle;
 
-    [Tooltip("Solid fill color behind the heatmap grid, so it stays visible against a black/passthrough background.")]
-    public Color backgroundColor = new Color(1f, 1f, 1f, 0.25f);
+    [Tooltip("Prefab instantiated for each recorded shot — a small UI Image (e.g. a circle sprite).")]
+    public RectTransform dotPrefab;
 
-    [Tooltip("Color of the crosshair lines dividing the grid into the four aim quadrants.")]
-    public Color quadrantLineColor = new Color(1f, 1f, 1f, 0.6f);
-
-    [Tooltip("Thickness (in pixels) of the quadrant divider lines.")]
-    [Range(1f, 6f)]
-    public float quadrantLineThickness = 2f;
+    [Tooltip("Defines the heatmap box: dots are instantiated as children of this RectTransform and " +
+             "positioned within its bounds. Its pivot must be (0.5, 0.5) — center — so normalized " +
+             "shot coordinates map directly onto anchoredPosition.")]
+    public RectTransform dotContainer;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -50,22 +49,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     private readonly List<Vector2> _points = new List<Vector2>();
     private readonly List<bool> _scored = new List<bool>();
+    private readonly List<RectTransform> _dotInstances = new List<RectTransform>();
     private bool _visible = false;
-
-    private static Texture2D _dotTexture;
-    private static Texture2D DotTexture
-    {
-        get
-        {
-            if (_dotTexture == null)
-            {
-                _dotTexture = new Texture2D(1, 1);
-                _dotTexture.SetPixel(0, 0, Color.white);
-                _dotTexture.Apply();
-            }
-            return _dotTexture;
-        }
-    }
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -73,6 +58,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
     {
         _goalDetector = GetComponent<GoalDetector>();
         _launcher = GetComponent<RandomLauncher>();
+
+        if (heatmapPanel != null)
+            heatmapPanel.SetActive(false);
     }
 
     void OnEnable()
@@ -132,78 +120,70 @@ public class ShotHeatmapRecorder : MonoBehaviour
         _points.Clear();
         _scored.Clear();
         _visible = false;
+
+        ClearDotInstances();
+
+        if (heatmapPanel != null)
+            heatmapPanel.SetActive(false);
     }
 
     /// <summary>Shows the heatmap for whatever shots have been recorded so far.</summary>
     public void ShowHeatmap()
     {
         _visible = true;
+        RebuildDisplay();
     }
 
-    // ── On-screen heatmap ────────────────────────────────────────
+    // ── Display ──────────────────────────────────────────────────
 
-    void OnGUI()
+    private void RebuildDisplay()
     {
-        if (!_visible || _points.Count == 0) return;
+        if (!_visible || _points.Count == 0 || dotContainer == null || dotPrefab == null)
+            return;
 
-        Vector2 half = _goalDetector.goalGateHalfSize;
-        float boxWidth = Screen.width * boxWidthFraction;
-        float boxHeight = boxWidth * (half.y / half.x);
-        Rect box = new Rect((Screen.width - boxWidth) * 0.5f, Screen.height * boxVerticalPosition, boxWidth, boxHeight);
+        if (heatmapPanel != null)
+            heatmapPanel.SetActive(true);
 
-        int scores = 0;
-        for (int i = 0; i < _scored.Count; i++)
-            if (_scored[i]) scores++;
-        int saves = _points.Count - scores;
-
-        GUIStyle titleStyle = new GUIStyle(GUI.skin.label)
+        if (heatmapTitle != null)
         {
-            fontSize = 44,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
-        GUI.Label(new Rect(box.x, box.y - 60f, box.width, 50f),
-                  $"SHOT HEATMAP — {saves}/{_points.Count} saved", titleStyle);
+            int scores = 0;
+            for (int i = 0; i < _scored.Count; i++)
+                if (_scored[i]) scores++;
+            int saves = _points.Count - scores;
 
-        DrawFilledRect(box, backgroundColor);
-        GUI.Box(box, GUIContent.none);
-        DrawQuadrantLines(box);
+            heatmapTitle.text = $"SHOT HEATMAP — {saves}/{_points.Count} saved";
+        }
+
+        ClearDotInstances();
+
+        Vector2 boxSize = dotContainer.rect.size;
 
         for (int i = 0; i < _points.Count; i++)
         {
-            // point.x/y are in [-1, 1] with +y = up; GUI space has +y = down, so invert.
-            float px = box.x + (_points[i].x * 0.5f + 0.5f) * box.width;
-            float py = box.y + (1f - (_points[i].y * 0.5f + 0.5f)) * box.height;
+            RectTransform dot = Instantiate(dotPrefab, dotContainer);
+            dot.gameObject.SetActive(true);
+            dot.sizeDelta = Vector2.one * dotSize;
 
-            DrawDot(px, py, dotRadius, _scored[i] ? scoreColor : saveColor);
+            // Normalized point is [-1, 1] with +y = up; anchoredPosition on a center-pivot
+            // RectTransform uses the same convention, so no axis flip is needed here.
+            dot.anchoredPosition = new Vector2(
+                _points[i].x * 0.5f * boxSize.x,
+                _points[i].y * 0.5f * boxSize.y);
+
+            Image img = dot.GetComponent<Image>();
+            if (img != null)
+                img.color = _scored[i] ? scoreColor : saveColor;
+
+            _dotInstances.Add(dot);
         }
     }
 
-    /// <summary>Draws a crosshair through the center of the box, splitting it into the same four
-    /// aim quadrants (TopLeft/TopRight/BottomLeft/BottomRight) the launchers target.</summary>
-    private void DrawQuadrantLines(Rect box)
+    private void ClearDotInstances()
     {
-        float half = quadrantLineThickness * 0.5f;
-        float midX = box.x + box.width * 0.5f;
-        float midY = box.y + box.height * 0.5f;
+        for (int i = 0; i < _dotInstances.Count; i++)
+            if (_dotInstances[i] != null)
+                Destroy(_dotInstances[i].gameObject);
 
-        DrawFilledRect(new Rect(midX - half, box.y, quadrantLineThickness, box.height), quadrantLineColor);
-        DrawFilledRect(new Rect(box.x, midY - half, box.width, quadrantLineThickness), quadrantLineColor);
-    }
-
-    private static void DrawDot(float centerX, float centerY, float radius, Color color)
-    {
-        Color prev = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(new Rect(centerX - radius, centerY - radius, radius * 2f, radius * 2f), DotTexture);
-        GUI.color = prev;
-    }
-
-    private static void DrawFilledRect(Rect rect, Color color)
-    {
-        Color prev = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(rect, DotTexture);
-        GUI.color = prev;
+        _dotInstances.Clear();
     }
 }
