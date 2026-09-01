@@ -160,8 +160,13 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         for (int i = 0; i < _points.Count; i++)
         {
-            RectTransform dot = Instantiate(dotPrefab, dotContainer);
+            // worldPositionStays: false — dotContainer sits under a heavily-downscaled World
+            // Space canvas, so the default world-position-preserving Instantiate would blow up
+            // each dot's localScale to compensate, making dots render enormous and overlap into
+            // one blob near the center instead of appearing as small, correctly-spread markers.
+            RectTransform dot = Instantiate(dotPrefab, dotContainer, false);
             dot.gameObject.SetActive(true);
+            dot.localScale = Vector3.one;
             dot.sizeDelta = Vector2.one * dotSize;
 
             // Normalized point is [-1, 1] with +y = up; anchoredPosition on a center-pivot
