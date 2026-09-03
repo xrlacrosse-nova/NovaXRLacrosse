@@ -33,18 +33,27 @@ public class FingerTouchDetector : MonoBehaviour
     [Tooltip("Minimum seconds between fired events, regardless of finger state.")]
     public float cooldown = 0.5f;
 
+    [Tooltip("Log hand-tracking state and live thumb-to-fingertip distances (~2x/sec) so a " +
+             "touch that isn't registering can be diagnosed from device logs (adb logcat).")]
+    public bool debugLogging = false;
+
     /// <summary>Fired once per qualifying touch (edge-triggered, not held-down).</summary>
     public event Action TouchStarted;
 
     private XRHandSubsystem _subsystem;
     private bool _isTouching;
     private float _lastFireTime = -999f;
+    private float _timeSinceEnable = 0f;
+    private bool _warnedNoSubsystem = false;
+    private float _lastDebugLogTime = -999f;
     private static readonly List<XRHandSubsystem> s_SubsystemsReuse = new();
 
     void Awake() => Instance = this;
 
     void Update()
     {
+        _timeSinceEnable += Time.deltaTime;
+
         if (_subsystem != null && _subsystem.running) return;
 
         SubsystemManager.GetSubsystems(s_SubsystemsReuse);
@@ -53,7 +62,20 @@ public class FingerTouchDetector : MonoBehaviour
             if (!s.running) continue;
             _subsystem = s;
             _subsystem.updatedHands += OnUpdatedHands;
+            Debug.Log("[FingerTouchDetector] Hand-tracking subsystem found and running.");
             break;
+        }
+
+        // Give the subsystem a few seconds to spin up (permission grant, sensor init) before
+        // warning — this fires once, not every frame, so it's safe to leave debugLogging off.
+        if (_subsystem == null && !_warnedNoSubsystem && _timeSinceEnable > 5f)
+        {
+            _warnedNoSubsystem = true;
+            Debug.LogWarning("[FingerTouchDetector] No running XRHandSubsystem found after 5s — " +
+                              "hand tracking is likely not enabled/permitted on this device. Check " +
+                              "the runtime Hand Tracking permission prompt was accepted, and that " +
+                              "Hand Tracking is enabled under Project Settings > XR Plug-in " +
+                              "Management > OpenXR (Android tab).");
         }
     }
 
@@ -69,6 +91,16 @@ public class FingerTouchDetector : MonoBehaviour
                                  XRHandSubsystem.UpdateType updateType)
     {
         if (updateType != XRHandSubsystem.UpdateType.Dynamic) return;
+
+        if (debugLogging && Time.time - _lastDebugLogTime >= 0.5f)
+        {
+            _lastDebugLogTime = Time.time;
+            Debug.Log($"[FingerTouchDetector] left tracked={subsystem.leftHand.isTracked} " +
+                      $"minDist={MinThumbTipDistance(subsystem.leftHand):F3}m | " +
+                      $"right tracked={subsystem.rightHand.isTracked} " +
+                      $"minDist={MinThumbTipDistance(subsystem.rightHand):F3}m | " +
+                      $"startDistance={startDistance:F3}m");
+        }
 
         bool touchingThisUpdate = CheckHand(subsystem.leftHand) || CheckHand(subsystem.rightHand);
 
@@ -102,6 +134,24 @@ public class FingerTouchDetector : MonoBehaviour
         }
 
         return false;
+    }
+
+    /// <summary>Smallest current thumb-to-fingertip distance for debug logging. Returns -1 if
+    /// the hand isn't tracked or no joint poses are available (not the same as "not touching" —
+    /// only used for diagnostics, never for the actual trigger decision in CheckHand).</summary>
+    private float MinThumbTipDistance(XRHand hand)
+    {
+        if (!hand.isTracked) return -1f;
+        if (!hand.GetJoint(XRHandJointID.ThumbTip).TryGetPose(out var thumbPose)) return -1f;
+
+        float min = float.MaxValue;
+        foreach (var finger in fingersPairedWithThumb)
+        {
+            if (!hand.GetJoint(GetTipJointID(finger)).TryGetPose(out var tipPose)) continue;
+            min = Mathf.Min(min, Vector3.Distance(thumbPose.position, tipPose.position));
+        }
+
+        return min == float.MaxValue ? -1f : min;
     }
 
     // Explicit switch rather than walking a finger's joint chain — the *Tip IDs are

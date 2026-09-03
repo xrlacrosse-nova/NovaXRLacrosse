@@ -162,16 +162,22 @@ public class RandomLauncher : MonoBehaviour
                               "bar in the Editor instead.");
         }
 
-        if (FingerTouchDetector.Instance != null)
-        {
-            FingerTouchDetector.Instance.TouchStarted += HandleFingerTouchStarted;
-            _fingerTouchSubscribed = true;
-        }
-        else
-        {
-            Debug.LogWarning("[RandomLauncher] No FingerTouchDetector in scene — finger-touch " +
-                              "start is disabled this session.");
-        }
+        // FingerTouchDetector.Instance is set in its own Awake(), on a different GameObject —
+        // Unity doesn't guarantee that runs before this OnEnable(), so a one-shot check here can
+        // silently miss it. TryConnectFingerTouch() is retried every frame in Update() below
+        // until it succeeds, so the subscription can't be lost to initialization order.
+        TryConnectFingerTouch();
+    }
+
+    /// <summary>Subscribes to FingerTouchDetector.TouchStarted as soon as an instance exists.
+    /// Safe to call every frame — no-ops once already subscribed.</summary>
+    private void TryConnectFingerTouch()
+    {
+        if (_fingerTouchSubscribed || FingerTouchDetector.Instance == null) return;
+
+        FingerTouchDetector.Instance.TouchStarted += HandleFingerTouchStarted;
+        _fingerTouchSubscribed = true;
+        Debug.Log("[RandomLauncher] Connected to FingerTouchDetector — finger-touch start enabled.");
     }
 
     void OnDisable()
@@ -212,6 +218,9 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_goDisplayTimer > 0f)
             _goDisplayTimer -= Time.deltaTime;
+
+        if (!_fingerTouchSubscribed)
+            TryConnectFingerTouch();
 
 #if UNITY_EDITOR
         // Editor-only fallback so the whole start -> countdown -> multi-shot loop can be verified
