@@ -109,6 +109,7 @@ public class RandomLauncher : MonoBehaviour
     // session state
     private bool _sessionRunning = false;
     private bool _controllerTriggerSubscribed = false;
+    private bool _fingerTouchSubscribed = false;
     private int _shotsFiredThisSession = 0;
 
     // pre-start countdown display state
@@ -160,6 +161,17 @@ public class RandomLauncher : MonoBehaviour
                               "in scene) — controller-trigger start is disabled this session; use the Space " +
                               "bar in the Editor instead.");
         }
+
+        if (FingerTouchDetector.Instance != null)
+        {
+            FingerTouchDetector.Instance.TouchStarted += HandleFingerTouchStarted;
+            _fingerTouchSubscribed = true;
+        }
+        else
+        {
+            Debug.LogWarning("[RandomLauncher] No FingerTouchDetector in scene — finger-touch " +
+                              "start is disabled this session.");
+        }
     }
 
     void OnDisable()
@@ -172,6 +184,12 @@ public class RandomLauncher : MonoBehaviour
         {
             MagicLeapController.Instance.TriggerPressed -= HandleStartTriggerPressed;
             _controllerTriggerSubscribed = false;
+        }
+
+        if (_fingerTouchSubscribed)
+        {
+            FingerTouchDetector.Instance.TouchStarted -= HandleFingerTouchStarted;
+            _fingerTouchSubscribed = false;
         }
     }
 
@@ -249,6 +267,11 @@ public class RandomLauncher : MonoBehaviour
     // ── Session start ────────────────────────────────────────────
 
     private void HandleStartTriggerPressed(InputAction.CallbackContext ctx)
+    {
+        TryStartSession();
+    }
+
+    private void HandleFingerTouchStarted()
     {
         TryStartSession();
     }
