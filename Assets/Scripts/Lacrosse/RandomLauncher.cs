@@ -109,6 +109,7 @@ public class RandomLauncher : MonoBehaviour
     // session state
     private bool _sessionRunning = false;
     private bool _controllerTriggerSubscribed = false;
+    private bool _fingerTouchSubscribed = false;
     private int _shotsFiredThisSession = 0;
 
     // pre-start countdown display state
@@ -160,6 +161,23 @@ public class RandomLauncher : MonoBehaviour
                               "in scene) — controller-trigger start is disabled this session; use the Space " +
                               "bar in the Editor instead.");
         }
+
+        // FingerTouchDetector.Instance is set in its own Awake(), on a different GameObject —
+        // Unity doesn't guarantee that runs before this OnEnable(), so a one-shot check here can
+        // silently miss it. TryConnectFingerTouch() is retried every frame in Update() below
+        // until it succeeds, so the subscription can't be lost to initialization order.
+        TryConnectFingerTouch();
+    }
+
+    /// <summary>Subscribes to FingerTouchDetector.TouchStarted as soon as an instance exists.
+    /// Safe to call every frame — no-ops once already subscribed.</summary>
+    private void TryConnectFingerTouch()
+    {
+        if (_fingerTouchSubscribed || FingerTouchDetector.Instance == null) return;
+
+        FingerTouchDetector.Instance.TouchStarted += HandleFingerTouchStarted;
+        _fingerTouchSubscribed = true;
+        Debug.Log("[RandomLauncher] Connected to FingerTouchDetector — finger-touch start enabled.");
     }
 
     void OnDisable()
@@ -172,6 +190,12 @@ public class RandomLauncher : MonoBehaviour
         {
             MagicLeapController.Instance.TriggerPressed -= HandleStartTriggerPressed;
             _controllerTriggerSubscribed = false;
+        }
+
+        if (_fingerTouchSubscribed)
+        {
+            FingerTouchDetector.Instance.TouchStarted -= HandleFingerTouchStarted;
+            _fingerTouchSubscribed = false;
         }
     }
 
@@ -194,6 +218,9 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_goDisplayTimer > 0f)
             _goDisplayTimer -= Time.deltaTime;
+
+        if (!_fingerTouchSubscribed)
+            TryConnectFingerTouch();
 
 #if UNITY_EDITOR
         // Editor-only fallback so the whole start -> countdown -> multi-shot loop can be verified
@@ -249,6 +276,11 @@ public class RandomLauncher : MonoBehaviour
     // ── Session start ────────────────────────────────────────────
 
     private void HandleStartTriggerPressed(InputAction.CallbackContext ctx)
+    {
+        TryStartSession();
+    }
+
+    private void HandleFingerTouchStarted()
     {
         TryStartSession();
     }
