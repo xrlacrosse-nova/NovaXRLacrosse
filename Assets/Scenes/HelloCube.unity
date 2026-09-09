@@ -119,6 +119,12 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!4 &17038138 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8145072973764649317, guid: 37a094fb39caa7441b08f42bdfa38a14,
+    type: 3}
+  m_PrefabInstance: {fileID: 229782160}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &63618236
 GameObject:
   m_ObjectHideFlags: 0
@@ -546,14 +552,6 @@ PrefabInstance:
         type: 3}
       insertIndex: -1
       addedObject: {fileID: 229782166}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 37a094fb39caa7441b08f42bdfa38a14,
-        type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 229782165}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 37a094fb39caa7441b08f42bdfa38a14,
-        type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 229782164}
   m_SourcePrefab: {fileID: 100100000, guid: 37a094fb39caa7441b08f42bdfa38a14, type: 3}
 --- !u!1 &229782161 stripped
 GameObject:
@@ -561,30 +559,6 @@ GameObject:
     type: 3}
   m_PrefabInstance: {fileID: 229782160}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &229782164
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 229782161}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: dbd2603d43f13cb41843c56a24223d7e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LacrosseStickAttacher
---- !u!114 &229782165
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 229782161}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b876e486fd1dafe48aa930a758943be3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ShooterAnimation
 --- !u!95 &229782166
 Animator:
   serializedVersion: 7
@@ -904,9 +878,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 588939134}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 02cdede30496d5b4ea7cae99beed9c5b, type: 3}
+  m_Script: {fileID: 11500000, guid: 73ad100cd48a2094ebf5fed16d214a81, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TwoHandLacrosseGrip
+  m_EditorClassIdentifier: Assembly-CSharp::LacrosseStickGrip
+  rightHandBone: {fileID: 17038138}
+  leftHandBone: {fileID: 1835460686}
+  rightHandPositionOffset: {x: 0, y: 0, z: 0}
+  rightHandRotationOffset: {x: 0, y: 0, z: 0}
+  shaftAxis: {x: 0, y: 1, z: 0}
+  leftHandGripDistance: 0.4
+  spineBone: {fileID: 2038902672}
+  minDistanceFromSpine: 0.15
 --- !u!1 &700000001
 GameObject:
   m_ObjectHideFlags: 0
@@ -1861,6 +1843,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!4 &1835460686 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -324020059923274528, guid: 37a094fb39caa7441b08f42bdfa38a14,
+    type: 3}
+  m_PrefabInstance: {fileID: 229782160}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2038902672 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7323945559205744059, guid: 37a094fb39caa7441b08f42bdfa38a14,
+    type: 3}
+  m_PrefabInstance: {fileID: 229782160}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &2140290814
 GameObject:
   m_ObjectHideFlags: 0
@@ -1894,6 +1888,7 @@ MonoBehaviour:
   startDistance: 0.02
   releaseDistance: 0.035
   cooldown: 0.5
+  debugLogging: 0
 --- !u!4 &2140290816
 Transform:
   m_ObjectHideFlags: 0
