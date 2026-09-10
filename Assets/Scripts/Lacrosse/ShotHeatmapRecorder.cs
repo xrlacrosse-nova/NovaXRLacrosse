@@ -95,11 +95,20 @@ public class ShotHeatmapRecorder : MonoBehaviour
         float nx = Mathf.Clamp((crossingPos.x - center.x) / half.x, -1f, 1f);
         float ny = Mathf.Clamp((crossingPos.y - center.y) / half.y, -1f, 1f);
 
-        bool scored = Mathf.Abs(crossingPos.x - center.x) <= half.x
-                   && Mathf.Abs(crossingPos.y - center.y) <= half.y;
+        // Read GoalDetector's own scored/missed verdict instead of re-deriving it from
+        // position math here — re-deriving it against goalGateHalfSize (the same box
+        // used above to normalize position) meant any shot the launcher can ever aim at
+        // was geometrically guaranteed to be "scored," since RandomLauncher/QuadrantMath
+        // never aim outside that box. GoalDetector.GoalScored is already correct and is
+        // set before OnPlaneCrossed fires, so it reflects this exact crossing.
+        bool scored = _goalDetector.GoalScored;
 
         _points.Add(new Vector2(nx, ny));
         _scored.Add(scored);
+
+        Debug.Log($"[ShotHeatmapRecorder] Recorded shot #{_points.Count}: raw=({crossingPos.x:F3}, {crossingPos.y:F3}) " +
+                  $"center=({center.x:F3}, {center.y:F3}) half=({half.x:F3}, {half.y:F3}) " +
+                  $"normalized=({nx:F3}, {ny:F3}) scored={scored}");
     }
 
     private void HandleSessionStarted()
@@ -157,6 +166,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
         ClearDotInstances();
 
         Vector2 boxSize = dotContainer.rect.size;
+        Debug.Log($"[ShotHeatmapRecorder] RebuildDisplay: dotContainer size={boxSize}, plotting {_points.Count} points");
 
         for (int i = 0; i < _points.Count; i++)
         {
@@ -178,6 +188,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
             Image img = dot.GetComponent<Image>();
             if (img != null)
                 img.color = _scored[i] ? scoreColor : saveColor;
+
+            Debug.Log($"[ShotHeatmapRecorder] Dot {i}: normalized=({_points[i].x:F3}, {_points[i].y:F3}) " +
+                      $"-> anchoredPosition={dot.anchoredPosition} scored={_scored[i]}");
 
             _dotInstances.Add(dot);
         }
