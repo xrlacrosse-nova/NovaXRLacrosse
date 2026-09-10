@@ -886,7 +886,7 @@ MonoBehaviour:
   rightHandPositionOffset: {x: 0, y: 0, z: 0}
   rightHandRotationOffset: {x: 0, y: 0, z: 0}
   shaftAxis: {x: 0, y: -1, z: 0}
-  leftHandGripDistance: 0.4
+  leftHandGripDistance: 0.8
   spineBone: {fileID: 2038902672}
   minDistanceFromSpine: 0.15
 --- !u!1 &700000001
@@ -1535,7 +1535,7 @@ RectTransform:
   m_GameObject: {fileID: 1226416892}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: -0.0009765625}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 15, y: 15, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1587744146}
@@ -1552,7 +1552,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1226416892}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
@@ -1666,7 +1666,7 @@ RectTransform:
   m_GameObject: {fileID: 1587744145}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: -5278.003}
-  m_LocalScale: {x: 1.1, y: 1.1, z: 1}
+  m_LocalScale: {x: 1.2, y: 1.2, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1226416893}
@@ -1676,7 +1676,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 104, y: 0}
+  m_AnchoredPosition: {x: -17, y: -65}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1587744147
