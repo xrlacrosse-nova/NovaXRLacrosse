@@ -4,7 +4,8 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Records where each shot crosses the goal plane during a session and displays a heatmap once
+/// Records where each shot crosses the goal plane during a session (or, for a shot the goalie
+/// saved before it got there, where it was headed at the plane) and displays a heatmap once
 /// the session ends. Attach to the same GameObject as GoalDetector (and RandomLauncher, if present)
 /// — the ball.
 ///
@@ -66,6 +67,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     void OnEnable()
     {
         _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        _goalDetector.OnSaved += HandleSaved;
 
         if (_launcher != null)
         {
@@ -77,6 +79,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     void OnDisable()
     {
         _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        _goalDetector.OnSaved -= HandleSaved;
 
         if (_launcher != null)
         {
@@ -89,24 +92,35 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     private void HandlePlaneCrossed(Vector3 crossingPos)
     {
-        Vector3 center = _goalDetector.goalGateCenter;
-        Vector2 half = _goalDetector.goalGateHalfSize;
-
-        float nx = Mathf.Clamp((crossingPos.x - center.x) / half.x, -1f, 1f);
-        float ny = Mathf.Clamp((crossingPos.y - center.y) / half.y, -1f, 1f);
-
         // Read GoalDetector's own scored/missed verdict instead of re-deriving it from
         // position math here — re-deriving it against goalGateHalfSize (the same box
-        // used above to normalize position) meant any shot the launcher can ever aim at
+        // used to normalize position) meant any shot the launcher can ever aim at
         // was geometrically guaranteed to be "scored," since RandomLauncher/QuadrantMath
         // never aim outside that box. GoalDetector.GoalScored is already correct and is
         // set before OnPlaneCrossed fires, so it reflects this exact crossing.
-        bool scored = _goalDetector.GoalScored;
+        RecordShot(crossingPos, _goalDetector.GoalScored);
+    }
+
+    /// <summary>A saved ball never crosses the gate plane, so OnPlaneCrossed doesn't fire for it —
+    /// GoalDetector raises OnSaved instead, with where the shot was headed at the gate plane.
+    /// The two events are mutually exclusive per shot, so nothing is recorded twice.</summary>
+    private void HandleSaved(Vector3 projectedPos)
+    {
+        RecordShot(projectedPos, scored: false);
+    }
+
+    private void RecordShot(Vector3 gatePlanePos, bool scored)
+    {
+        Vector3 center = _goalDetector.goalGateCenter;
+        Vector2 half = _goalDetector.goalGateHalfSize;
+
+        float nx = Mathf.Clamp((gatePlanePos.x - center.x) / half.x, -1f, 1f);
+        float ny = Mathf.Clamp((gatePlanePos.y - center.y) / half.y, -1f, 1f);
 
         _points.Add(new Vector2(nx, ny));
         _scored.Add(scored);
 
-        Debug.Log($"[ShotHeatmapRecorder] Recorded shot #{_points.Count}: raw=({crossingPos.x:F3}, {crossingPos.y:F3}) " +
+        Debug.Log($"[ShotHeatmapRecorder] Recorded shot #{_points.Count}: raw=({gatePlanePos.x:F3}, {gatePlanePos.y:F3}) " +
                   $"center=({center.x:F3}, {center.y:F3}) half=({half.x:F3}, {half.y:F3}) " +
                   $"normalized=({nx:F3}, {ny:F3}) scored={scored}");
     }
