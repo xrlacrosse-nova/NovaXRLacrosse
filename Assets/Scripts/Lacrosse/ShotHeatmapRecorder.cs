@@ -32,11 +32,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
     [Tooltip("Root panel toggled active/inactive to show or hide the whole heatmap. Leave unassigned to disable.")]
     public GameObject heatmapPanel;
 
-    [Tooltip("TextMeshPro label showing 'SHOT HEATMAP — X/Y saved'.")]
-    public TextMeshProUGUI heatmapTitle;
-
-    [Tooltip("TextMeshPro label showing the per-quadrant save/score tally (e.g. 'TL: 2/2 saved · " +
-             "TR: 0/1 saved · BL: 3/3 saved · BR: 1/2 saved'). Leave unassigned to disable.")]
+    [Tooltip("TextMeshPro label showing the overall session total plus the per-quadrant save/score " +
+             "tally, e.g. 'SHOT HEATMAP — 6/8 saved' on one line and 'TL: 2/2 saved · TR: 0/1 saved · " +
+             "BL: 3/3 saved · BR: 1/2 saved' on the next. Leave unassigned to disable.")]
     public TextMeshProUGUI quadrantBreakdownText;
 
     [Tooltip("Prefab instantiated for each recorded shot — a small UI Image (e.g. a circle sprite).")]
@@ -171,16 +169,6 @@ public class ShotHeatmapRecorder : MonoBehaviour
         if (heatmapPanel != null)
             heatmapPanel.SetActive(true);
 
-        if (heatmapTitle != null)
-        {
-            int scores = 0;
-            for (int i = 0; i < _scored.Count; i++)
-                if (_scored[i]) scores++;
-            int saves = _points.Count - scores;
-
-            heatmapTitle.text = $"SHOT HEATMAP — {saves}/{_points.Count} saved";
-        }
-
         if (quadrantBreakdownText != null)
             quadrantBreakdownText.text = BuildQuadrantBreakdown();
 
@@ -218,18 +206,26 @@ public class ShotHeatmapRecorder : MonoBehaviour
     }
 
     /// <summary>Buckets each recorded point by quadrant, fresh off the same _points/_scored lists
-    /// the dot-plot already uses — no separate running counters to keep in sync or reset.</summary>
+    /// the dot-plot already uses — no separate running counters to keep in sync or reset. Leads
+    /// with the overall session total so this can be the heatmap's only text label.</summary>
     private string BuildQuadrantBreakdown()
     {
         int[] scores = new int[4];
         int[] totals = new int[4];
+        int totalScores = 0;
 
         for (int i = 0; i < _points.Count; i++)
         {
             int index = (int)QuadrantMath.BucketFromNormalized(_points[i]);
             totals[index]++;
-            if (_scored[i]) scores[index]++;
+            if (_scored[i])
+            {
+                scores[index]++;
+                totalScores++;
+            }
         }
+
+        int totalSaves = _points.Count - totalScores;
 
         string Tally(Quadrant q)
         {
@@ -238,7 +234,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
             return $"{QuadrantLabel(q)}: {saves}/{totals[index]} saved";
         }
 
-        return $"{Tally(Quadrant.TopLeft)} · {Tally(Quadrant.TopRight)} · " +
+        return $"SHOT HEATMAP — {totalSaves}/{_points.Count} saved\n" +
+               $"{Tally(Quadrant.TopLeft)} · {Tally(Quadrant.TopRight)} · " +
                $"{Tally(Quadrant.BottomLeft)} · {Tally(Quadrant.BottomRight)}";
     }
 
