@@ -53,6 +53,19 @@ public static class QuadrantMath
         return center + new Vector3(SignX(quadrant) * half.x * 0.5f, SignY(quadrant) * half.y * 0.5f, 0f);
     }
 
+    /// <summary>
+    /// Which quadrant a normalized gate-plane point (each axis in [-1, 1], as recorded by
+    /// ShotHeatmapRecorder) falls into. The inverse of the sign convention SignX/SignY use for aiming.
+    /// </summary>
+    public static Quadrant BucketFromNormalized(Vector2 normalized)
+    {
+        bool left = normalized.x < 0f;
+        bool top = normalized.y >= 0f;
+
+        if (top) return left ? Quadrant.TopLeft : Quadrant.TopRight;
+        return left ? Quadrant.BottomLeft : Quadrant.BottomRight;
+    }
+
     private static float SignX(Quadrant quadrant) =>
         (quadrant == Quadrant.TopLeft || quadrant == Quadrant.BottomLeft) ? -1f : 1f;
 

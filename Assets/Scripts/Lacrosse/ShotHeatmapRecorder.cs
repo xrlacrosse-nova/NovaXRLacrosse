@@ -35,6 +35,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
     [Tooltip("TextMeshPro label showing 'SHOT HEATMAP — X/Y saved'.")]
     public TextMeshProUGUI heatmapTitle;
 
+    [Tooltip("TextMeshPro label showing the per-quadrant save/score tally (e.g. 'TL: 2/2 saved · " +
+             "TR: 0/1 saved · BL: 3/3 saved · BR: 1/2 saved'). Leave unassigned to disable.")]
+    public TextMeshProUGUI quadrantBreakdownText;
+
     [Tooltip("Prefab instantiated for each recorded shot — a small UI Image (e.g. a circle sprite).")]
     public RectTransform dotPrefab;
 
@@ -177,6 +181,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
             heatmapTitle.text = $"SHOT HEATMAP — {saves}/{_points.Count} saved";
         }
 
+        if (quadrantBreakdownText != null)
+            quadrantBreakdownText.text = BuildQuadrantBreakdown();
+
         ClearDotInstances();
 
         Vector2 boxSize = dotContainer.rect.size;
@@ -207,6 +214,42 @@ public class ShotHeatmapRecorder : MonoBehaviour
                       $"-> anchoredPosition={dot.anchoredPosition} scored={_scored[i]}");
 
             _dotInstances.Add(dot);
+        }
+    }
+
+    /// <summary>Buckets each recorded point by quadrant, fresh off the same _points/_scored lists
+    /// the dot-plot already uses — no separate running counters to keep in sync or reset.</summary>
+    private string BuildQuadrantBreakdown()
+    {
+        int[] scores = new int[4];
+        int[] totals = new int[4];
+
+        for (int i = 0; i < _points.Count; i++)
+        {
+            int index = (int)QuadrantMath.BucketFromNormalized(_points[i]);
+            totals[index]++;
+            if (_scored[i]) scores[index]++;
+        }
+
+        string Tally(Quadrant q)
+        {
+            int index = (int)q;
+            int saves = totals[index] - scores[index];
+            return $"{QuadrantLabel(q)}: {saves}/{totals[index]} saved";
+        }
+
+        return $"{Tally(Quadrant.TopLeft)} · {Tally(Quadrant.TopRight)} · " +
+               $"{Tally(Quadrant.BottomLeft)} · {Tally(Quadrant.BottomRight)}";
+    }
+
+    private static string QuadrantLabel(Quadrant quadrant)
+    {
+        switch (quadrant)
+        {
+            case Quadrant.TopLeft: return "TL";
+            case Quadrant.TopRight: return "TR";
+            case Quadrant.BottomLeft: return "BL";
+            default: return "BR";
         }
     }
 
