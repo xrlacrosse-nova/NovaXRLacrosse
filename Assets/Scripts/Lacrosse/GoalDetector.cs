@@ -10,6 +10,11 @@ using UnityEngine;
 /// <see cref="OnPlaneCrossed"/> / <see cref="OnGoalScored"/> instead of re-implementing
 /// plane-crossing detection.
 ///
+/// It also owns the "save" outcome: GoalieSaveZone (the goalie's stick) calls
+/// <see cref="TryRegisterSave"/> when it touches the ball mid-flight, which ends the shot
+/// (no plane crossing will follow) and raises <see cref="OnSaved"/>. A shot ends exactly
+/// once — as a goal, a miss, or a save.
+///
 /// Quadrant layout (facing the goal):
 ///   TopLeft    | TopRight
 ///   -----------+-----------
@@ -27,10 +32,10 @@ public class GoalDetector : MonoBehaviour
     public Vector2 goalGateHalfSize = new Vector2(0.9f, 0.6f);
 
     [Header("UI")]
-    [Tooltip("Show a GOAL! overlay when the ball scores.")]
+    [Tooltip("Show a GOAL! / SAVE! overlay when the shot ends in a goal or a save.")]
     public bool showOnScreenGoal = true;
 
-    [Tooltip("TextMeshPro label used for the GOAL! popup. Leave unassigned to disable.")]
+    [Tooltip("TextMeshPro label used for the GOAL! / SAVE! popup. Leave unassigned to disable.")]
     public TextMeshProUGUI goalText;
 
     // ── state ─────────────────────────────────────────────────────
@@ -38,8 +43,14 @@ public class GoalDetector : MonoBehaviour
     private Rigidbody _rb;
     private bool _active = false;   // true after OnBallLaunched()
     private bool _goalScored = false;
+    private bool _saved = false;
+    private bool _resolved = false; // the shot has ended: goal, miss, or save
     private float _displayTimer = 0f;
     private float _prevZ;
+
+    // what the popup currently says (set when a goal or save happens)
+    private string _popupText = "GOAL!";
+    private Color _popupColor = Color.yellow;
 
     private const float DisplayDuration = 3f;
 
@@ -51,8 +62,23 @@ public class GoalDetector : MonoBehaviour
     /// <summary>Fired once when the ball crosses the gate plane inside the goal bounds.</summary>
     public event Action<Vector3> OnGoalScored;
 
+    /// <summary>Fired once when the goalie's stick saves the shot. The payload is where the
+    /// ball's straight-line path meets the gate plane (the same meaning as the
+    /// <see cref="OnPlaneCrossed"/> payload), not where the stick touched it.</summary>
+    public event Action<Vector3> OnSaved;
+
     /// <summary>True once the current shot has scored.</summary>
     public bool GoalScored => _goalScored;
+
+    /// <summary>True once the current shot has been saved.</summary>
+    public bool Saved => _saved;
+
+    /// <summary>True while a shot has been launched and hasn't ended yet (no goal, miss, or
+    /// save so far). A save can only be registered while this is true.</summary>
+    public bool ShotInFlight => _active && !_resolved;
+
+    /// <summary>World position of the ball when the current shot was saved.</summary>
+    public Vector3 SaveContactPosition { get; private set; }
 
     // ── lifecycle ─────────────────────────────────────────────────
 
@@ -69,7 +95,7 @@ public class GoalDetector : MonoBehaviour
 
         UpdateGoalText();
 
-        if (!_active || _goalScored) return;
+        if (!_active || _resolved) return;
 
         float currentZ = transform.position.z;
 
@@ -79,6 +105,10 @@ public class GoalDetector : MonoBehaviour
 
         if (crossedPlane)
         {
+            // The first crossing ends the shot (goal or miss), so a later bounce back across
+            // the plane can't fire OnPlaneCrossed a second time.
+            _resolved = true;
+
             // Interpolate back to find the exact crossing position
             float t = Mathf.InverseLerp(_prevZ, currentZ, goalGateCenter.z);
 
@@ -98,6 +128,8 @@ public class GoalDetector : MonoBehaviour
             if (insideGate)
             {
                 _goalScored = true;
+                _popupText = "GOAL!";
+                _popupColor = Color.yellow;
                 _displayTimer = DisplayDuration;
                 Debug.Log($"[GoalDetector] GOAL! Crossed gate at " +
                           $"({crossingPos.x:F2}, {crossingPos.y:F2}, {goalGateCenter.z:F2})");
@@ -122,6 +154,8 @@ public class GoalDetector : MonoBehaviour
     {
         _active = true;
         _goalScored = false;
+        _saved = false;
+        _resolved = false;
         _prevZ = transform.position.z;
     }
 
@@ -130,7 +164,50 @@ public class GoalDetector : MonoBehaviour
     {
         _active = false;
         _goalScored = false;
+        _saved = false;
+        _resolved = false;
         _displayTimer = 0f;
+    }
+
+    /// <summary>
+    /// Registers the current shot as saved. Called by GoalieSaveZone when the goalie's stick
+    /// touches the ball. Returns false, with no side effects, unless a shot is in flight and
+    /// hasn't already ended — so touching the idle ball, or the ball after it crossed the
+    /// gate plane, does nothing, and repeated touches on one shot count once.
+    /// </summary>
+    /// <param name="contactPos">World position of the ball at the touch.</param>
+    /// <param name="ballVelocity">The ball's velocity at the touch, used to project where
+    /// the shot was headed.</param>
+    public bool TryRegisterSave(Vector3 contactPos, Vector3 ballVelocity)
+    {
+        if (!ShotInFlight) return false;
+
+        _saved = true;
+        _resolved = true;
+        SaveContactPosition = contactPos;
+
+        _popupText = "SAVE!";
+        _popupColor = Color.green;
+        _displayTimer = DisplayDuration;
+
+        Vector3 projected = ProjectToGatePlane(contactPos, ballVelocity);
+
+        Debug.Log($"[GoalDetector] SAVE! Touched at ({contactPos.x:F2}, {contactPos.y:F2}, {contactPos.z:F2}) | " +
+                  $"was headed to gate plane at ({projected.x:F2}, {projected.y:F2})");
+
+        OnSaved?.Invoke(projected);
+        return true;
+    }
+
+    /// <summary>The ball flies in a straight line until it crosses the gate plane (custom
+    /// gravity only turns on after that), so extend its path from the touch point to the plane.
+    /// Falls back to the touch point if the ball isn't moving toward the plane.</summary>
+    private Vector3 ProjectToGatePlane(Vector3 pos, Vector3 velocity)
+    {
+        if (Mathf.Abs(velocity.z) < 0.001f) return pos;
+
+        float t = (goalGateCenter.z - pos.z) / velocity.z;
+        return t < 0f ? pos : pos + velocity * t;
     }
 
     // ── on-screen UI ──────────────────────────────────────────────
@@ -160,9 +237,9 @@ public class GoalDetector : MonoBehaviour
         float alpha = Mathf.Lerp(1f, 0f, Mathf.Clamp01(progress));
 
         goalText.gameObject.SetActive(true);
-        goalText.text = "GOAL!";
+        goalText.text = _popupText;
 
-        Color color = Color.yellow;
+        Color color = _popupColor;
         color.a = alpha;
         goalText.color = color;
         goalText.rectTransform.localScale = Vector3.one * scale;

@@ -76,6 +76,12 @@ public class RandomLauncher : MonoBehaviour
     [Tooltip("Downward acceleration (m/s^2) applied while the ball is falling. ~9.81 mimics Earth gravity.")]
     public float customGravity = 9.81f;
 
+    [Header("Save")]
+    [Tooltip("When the goalie saves a shot, the ball freezes where it was touched and vanishes after " +
+             "this many seconds — a brief 'caught it' beat. 0 = vanishes next frame.")]
+    [Min(0f)]
+    public float saveDespawnDelay = 0.15f;
+
     [Header("Session")]
     [Tooltip("Number of shots fired per session, once started.")]
     [Min(1)]
@@ -143,6 +149,7 @@ public class RandomLauncher : MonoBehaviour
     void OnEnable()
     {
         _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        _goalDetector.OnSaved += HandleSaved;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned += HandleDespawned;
 
@@ -183,6 +190,7 @@ public class RandomLauncher : MonoBehaviour
     void OnDisable()
     {
         _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        _goalDetector.OnSaved -= HandleSaved;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned -= HandleDespawned;
 
@@ -240,8 +248,24 @@ public class RandomLauncher : MonoBehaviour
             BeginFalling();
     }
 
-    /// <summary>Called by FloorBoundary once the ball despawns after coming to rest on the floor.
-    /// Continues the session (next shot after a randomized interval) until ShotsPerSession is
+    /// <summary>Called by GoalDetector when the goalie's stick saves the shot. The ball never
+    /// crosses the gate plane, so it doesn't fall — it freezes where it was touched and
+    /// despawns. That despawn raises FloorBoundary.OnDespawned, which continues the session
+    /// exactly as a floor landing does.</summary>
+    private void HandleSaved(Vector3 projectedPos)
+    {
+        if (_floorBoundary == null)
+        {
+            Debug.LogWarning("[RandomLauncher] Shot was saved but there's no FloorBoundary on the ball to " +
+                             "despawn it — the session can't continue. Add a FloorBoundary component.");
+            return;
+        }
+
+        _floorBoundary.DespawnAfter(saveDespawnDelay, freezeInPlace: true);
+    }
+
+    /// <summary>Called by FloorBoundary once the ball despawns (after landing on the floor, or
+    /// after a save). Continues the session (next shot after a randomized interval) until ShotsPerSession is
     /// reached, then ends the session.</summary>
     private void HandleDespawned()
     {

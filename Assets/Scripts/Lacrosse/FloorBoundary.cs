@@ -38,7 +38,7 @@ public class FloorBoundary : MonoBehaviour
     private Collider _collider;
     private Coroutine _despawnRoutine;
 
-    /// <summary>Raised once the object actually despawns (after <see cref="despawnDelay"/> elapses).</summary>
+    /// <summary>Raised once the object actually despawns (after the despawn delay elapses).</summary>
     public event Action OnDespawned;
 
     private void Awake()
@@ -115,19 +115,47 @@ public class FloorBoundary : MonoBehaviour
                     _rb.angularVelocity = Vector3.zero;
 
                     if (despawnAfterLanding && _despawnRoutine == null)
-                        _despawnRoutine = StartCoroutine(DespawnAfterDelay());
+                        DespawnAfter(despawnDelay, freezeInPlace: false);
                 }
             }
         }
     }
 
     /// <summary>
-    /// Waits <see cref="despawnDelay"/> seconds after the object has come to rest,
-    /// then hides it and disables its physics until <see cref="CancelDespawn"/> is called.
+    /// Hides the object and disables its physics after <paramref name="delay"/> seconds, then
+    /// raises <see cref="OnDespawned"/>, until <see cref="CancelDespawn"/> is called. Used for
+    /// both landing on the floor and a goalie save. Replaces any despawn already pending, so
+    /// the two can't race each other.
     /// </summary>
-    private IEnumerator DespawnAfterDelay()
+    /// <param name="delay">Seconds to wait. Even 0 waits until the next frame, so anything
+    /// subscribed to an event fired this frame (e.g. the heatmap recording a save) runs
+    /// before <see cref="OnDespawned"/> ends the session.</param>
+    /// <param name="freezeInPlace">If true, stops the object dead where it is right now.</param>
+    public void DespawnAfter(float delay, bool freezeInPlace)
     {
-        yield return new WaitForSeconds(despawnDelay);
+        if (_despawnRoutine != null)
+        {
+            StopCoroutine(_despawnRoutine);
+            _despawnRoutine = null;
+        }
+
+        // Zero the velocity BEFORE going kinematic — setting velocity on a kinematic body warns.
+        if (freezeInPlace && _hasRigidbody && !_rb.isKinematic)
+        {
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+            _rb.isKinematic = true;
+        }
+
+        _despawnRoutine = StartCoroutine(DespawnRoutine(delay));
+    }
+
+    private IEnumerator DespawnRoutine(float delay)
+    {
+        if (delay > 0f)
+            yield return new WaitForSeconds(delay);
+        else
+            yield return null;
 
         if (_renderer != null) _renderer.enabled = false;
         if (_collider != null) _collider.enabled = false;
