@@ -9,8 +9,9 @@ using UnityEngine.InputSystem;
 ///
 /// Setup (all in the Unity Editor — see Plans/Saving_Plan.md for the full steps):
 ///   1. Create an empty GameObject under the ML Rig's Controller, next to (NOT under) the
-///      stick visual, and fit a Box Collider around the stick head.
-///   2. On the Box Collider, tick Is Trigger.
+///      stick visual, and fit a Collider around the stick head — a Capsule or Sphere Collider
+///      matches the current disc-shaped stick head better than a Box.
+///   2. On the Collider, tick Is Trigger.
 ///   3. Add a Rigidbody: Is Kinematic on, Use Gravity off. (A moving collider without a
 ///      Rigidbody is treated as static; the ball's own Rigidbody is what makes trigger events fire.)
 ///   4. Add this component to the same GameObject. Ball can be left empty — it's auto-found.
@@ -72,8 +73,8 @@ public class GoalieSaveZone : MonoBehaviour
     {
         if (_zoneCollider == null)
         {
-            Debug.LogWarning("[GoalieSaveZone] No Collider on this GameObject — add a Box Collider " +
-                             "(Is Trigger) around the stick head.");
+            Debug.LogWarning("[GoalieSaveZone] No Collider on this GameObject — add a trigger Collider " +
+                             "(Capsule/Sphere/Box, whichever fits the stick head shape) around the stick head.");
             return;
         }
 
@@ -186,21 +187,71 @@ public class GoalieSaveZone : MonoBehaviour
 
         Matrix4x4 previousMatrix = Gizmos.matrix;
 
+        // Draw in local space so the shape follows the zone's rotation, like the collider does.
+        Gizmos.matrix = transform.localToWorldMatrix;
+
         if (col is BoxCollider box)
         {
-            // Draw in local space so the box follows the zone's rotation, like the collider does.
-            Gizmos.matrix = transform.localToWorldMatrix;
             Gizmos.color = fill;
             Gizmos.DrawCube(box.center, box.size);
             Gizmos.color = outline;
             Gizmos.DrawWireCube(box.center, box.size);
         }
+        else if (col is SphereCollider sphere)
+        {
+            Gizmos.color = fill;
+            Gizmos.DrawSphere(sphere.center, sphere.radius);
+            Gizmos.color = outline;
+            Gizmos.DrawWireSphere(sphere.center, sphere.radius);
+        }
+        else if (col is CapsuleCollider capsule)
+        {
+            DrawCapsuleGizmo(capsule, fill, outline);
+        }
         else
         {
+            Gizmos.matrix = previousMatrix;
             Gizmos.color = outline;
             Gizmos.DrawWireCube(col.bounds.center, col.bounds.size);
         }
 
         Gizmos.matrix = previousMatrix;
+    }
+
+    /// <summary>Approximates a capsule as two end-cap spheres joined by wire lines along its axis,
+    /// since Gizmos has no built-in capsule primitive. Called with Gizmos.matrix already set to
+    /// local space, so this only deals with the collider's own center/radius/height/direction.</summary>
+    private static void DrawCapsuleGizmo(CapsuleCollider capsule, Color fill, Color outline)
+    {
+        Vector3 axis = capsule.direction switch
+        {
+            0 => Vector3.right,
+            2 => Vector3.forward,
+            _ => Vector3.up,
+        };
+
+        float halfLine = Mathf.Max(0f, capsule.height * 0.5f - capsule.radius);
+        Vector3 capA = capsule.center + axis * halfLine;
+        Vector3 capB = capsule.center - axis * halfLine;
+
+        Gizmos.color = fill;
+        Gizmos.DrawSphere(capA, capsule.radius);
+        Gizmos.DrawSphere(capB, capsule.radius);
+
+        Gizmos.color = outline;
+        Gizmos.DrawWireSphere(capA, capsule.radius);
+        Gizmos.DrawWireSphere(capB, capsule.radius);
+
+        // Four lines around the cylinder connecting the two caps, so the capsule's length reads
+        // clearly even though the caps themselves are drawn as full spheres rather than hemispheres.
+        Vector3 perp1 = Vector3.Cross(axis, Vector3.up).sqrMagnitude > 0.001f
+            ? Vector3.Cross(axis, Vector3.up).normalized
+            : Vector3.Cross(axis, Vector3.right).normalized;
+        Vector3 perp2 = Vector3.Cross(axis, perp1).normalized;
+
+        foreach (Vector3 dir in new[] { perp1, -perp1, perp2, -perp2 })
+        {
+            Gizmos.DrawLine(capA + dir * capsule.radius, capB + dir * capsule.radius);
+        }
     }
 }
