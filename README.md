@@ -22,6 +22,10 @@ training scene (it has both `RandomLauncher` and `FingerTouchDetector` wired in)
 `BallLauncher` component described below; it wasn't updated when the flow moved to
 `RandomLauncher`.
 
+Goalie save detection (a stick-mounted trigger zone that registers a touch on the ball
+mid-flight as a save) is in active development — see `Plans/Saving_Plan.md` for the design
+and current status before relying on it.
+
 # Copyright
 Copyright (c) 2020-present Magic Leap, Inc. All Rights Reserved.
 Use of this file is governed by the Developer Agreement, located
