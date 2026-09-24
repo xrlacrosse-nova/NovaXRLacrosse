@@ -17,7 +17,7 @@ Built on top of the example scaffolding above, this repo is a Magic Leap 2 goali
 reaction-training simulator: a ball fires at a random (or fixed) point in one quadrant
 of a virtual goal, and the goalie's job is to save it. The active scene is
 **`Assets/Scenes/HelloCube.unity`** — despite the placeholder name, this is the real
-training scene (it has both `RandomLauncher` and `FingerTouchDetector` wired in).
+training scene (it has `RandomLauncher` wired in).
 `Assets/Scenes/Practice_Unity.unity` is an earlier scene still using the legacy
 `BallLauncher` component described below; it wasn't updated when the flow moved to
 `RandomLauncher`.
