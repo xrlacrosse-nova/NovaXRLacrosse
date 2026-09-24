@@ -1170,7 +1170,7 @@ MonoBehaviour:
   aimMode: 0
   edgePadding: 0.05
   quadrantDepth: 0.65
-  launchSpeed: 18
+  launchSpeed: 35
   autoResetOnLaunch: 1
   enableCustomGravityOnGoal: 1
   customGravity: 9.81
