@@ -38,7 +38,8 @@ namespace MagicLeap.Examples
         private readonly InputActionAsset inputActionsAsset;
         private readonly InputActionMap inputMap;
         private readonly InputAction triggerAction, triggerValueAction, trackpadClickAction, trackpadForceAction, bumperAction, menuButtonAction, trackpadAction, positionAction,
-                             rotationAction, trackingStatusAction, isTrackedAction, pointerPositionAction, pointerRotationAction, velocityAction, angularVelocityAction;
+                             rotationAction, trackingStatusAction, isTrackedAction, pointerPositionAction, pointerRotationAction, velocityAction, angularVelocityAction,
+                             hapticsAction;
 
         private MagicLeapController()
         {
@@ -70,6 +71,7 @@ namespace MagicLeap.Examples
             triggerValueAction = inputMap.FindAction("TriggerValue");
             trackpadAction = inputMap.FindAction("Trackpad");
             trackpadForceAction ??= inputMap.FindAction("TrackpadForce");
+            hapticsAction = inputMap.FindAction("Haptics");
         }
 
         ~MagicLeapController()
@@ -183,5 +185,20 @@ namespace MagicLeap.Examples
         /// The current touch pressure being applied to the controller's touchpad, from 0 to 1.
         /// </summary>
         public float TouchPressure => trackpadForceAction.ReadValue<float>();
+
+        /// <summary>
+        /// Fires a single haptic impulse on the controller through the "Haptics" OpenXR output action.
+        /// Returns false (and does nothing) if the action map has no "Haptics" action.
+        /// </summary>
+        /// <param name="amplitude">Vibration strength, from 0 to 1.</param>
+        /// <param name="duration">Vibration length in seconds.</param>
+        public bool SendHapticImpulse(float amplitude, float duration)
+        {
+            if (hapticsAction == null)
+                return false;
+
+            UnityEngine.XR.OpenXR.Input.OpenXRInput.SendHapticImpulse(hapticsAction, Mathf.Clamp01(amplitude), Mathf.Max(0f, duration));
+            return true;
+        }
     }
 }
