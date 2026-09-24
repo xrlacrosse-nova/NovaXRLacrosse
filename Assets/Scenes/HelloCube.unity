@@ -353,12 +353,12 @@ PrefabInstance:
     - target: {fileID: -8679921383154817045, guid: fc2b3a0b85732804990460b6d6c0deab,
         type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.003
+      value: 0.00372
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: fc2b3a0b85732804990460b6d6c0deab,
         type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.01
+      value: 0.00938
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: fc2b3a0b85732804990460b6d6c0deab,
         type: 3}
@@ -368,7 +368,7 @@ PrefabInstance:
     - target: {fileID: -8679921383154817045, guid: fc2b3a0b85732804990460b6d6c0deab,
         type: 3}
       propertyPath: m_LocalPosition.x
-      value: -1.5
+      value: -1.679
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: fc2b3a0b85732804990460b6d6c0deab,
         type: 3}
@@ -1150,8 +1150,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f29cfdfaf0f457e49a77fe15a34a5e19, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalDetector
-  goalGateCenter: {x: -0.75, y: 1.005, z: 0.75}
-  goalGateHalfSize: {x: 0.75, y: 1}
+  goalGateCenter: {x: -0.75, y: 0.9144, z: 0.75}
+  goalGateHalfSize: {x: 0.9144, y: 0.9144}
   showOnScreenGoal: 1
   goalText: {fileID: 63618238}
 --- !u!114 &866954162
