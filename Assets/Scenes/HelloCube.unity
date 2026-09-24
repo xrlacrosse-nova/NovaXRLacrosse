@@ -1012,6 +1012,7 @@ GameObject:
   - component: {fileID: 866954162}
   - component: {fileID: 866954163}
   - component: {fileID: 866954164}
+  - component: {fileID: 866954165}
   m_Layer: 0
   m_Name: LacrosseBall
   m_TagString: Untagged
@@ -1219,6 +1220,23 @@ MonoBehaviour:
   dotPrefab: {fileID: 2107484640309600893, guid: 0aeb73c6b9661044abf6e6e5bbc43910,
     type: 3}
   dotContainer: {fileID: 383481017}
+--- !u!114 &866954165
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866954152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c1b83c1597f2e4b49909955ef27781c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShotOutcomeHaptics
+  saveAmplitude: 0.3
+  saveDuration: 0.08
+  goalAmplitude: 0.9
+  goalDuration: 0.35
+  logImpulses: 1
 --- !u!4 &934791496 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,
