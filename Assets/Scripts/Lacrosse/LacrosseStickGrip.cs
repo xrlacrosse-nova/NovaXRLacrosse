@@ -26,8 +26,9 @@ using UnityEngine;
 /// 3. With the stick selected, check the gizmos: the yellow line should run down the middle of
 ///    the shaft, and the green sphere should sit near the butt end.
 /// 4. Enter Play mode and pause. Move/rotate the stick in the Scene view until it sits in both
-///    hands, then right-click this component -> Capture Grip From Current Pose. That fills in
-///    the palm offsets and Roll Offset. (Or tune those fields by hand; they update live.)
+///    hands, and rotate the left hand bone until it wraps the shaft. Then right-click this
+///    component -> Capture Grip From Current Pose. That fills in the palm offsets, Roll Offset,
+///    and the left hand's grip rotation (and turns on Align Left Hand).
 /// </summary>
 public class LacrosseStickGrip : MonoBehaviour
 {
@@ -70,6 +71,18 @@ public class LacrosseStickGrip : MonoBehaviour
     [Range(-180f, 180f)]
     public float rollOffset = 0f;
 
+    [Header("Left Hand Rotation Fix")]
+    [Tooltip("Override the animation's left hand rotation so the hand wraps the shaft. The hand " +
+             "is held at Left Hand Grip Rotation relative to the stick. Turned on by Capture Grip.")]
+    public bool alignLeftHand = false;
+
+    [Tooltip("Left hand rotation relative to the stick (Euler degrees). Set by Capture Grip.")]
+    public Vector3 leftHandGripRotation = Vector3.zero;
+
+    [Tooltip("1 = hand fully follows the grip rotation, 0 = the animation's rotation.")]
+    [Range(0f, 1f)]
+    public float leftHandAlignWeight = 1f;
+
     [Header("Body Clamp (optional)")]
     [Tooltip("If assigned, the left palm target is kept at least Min Distance From Spine away " +
              "from this bone, so the shaft can't rotate through the torso.")]
@@ -98,11 +111,42 @@ public class LacrosseStickGrip : MonoBehaviour
     void LateUpdate()
     {
         Vector3 bottomPalm = PalmPosition(rightHandBone, rightPalmOffset);
-        Vector3 topPalm = ClampFromSpine(PalmPosition(leftHandBone, leftPalmOffset));
+        Quaternion leftHandRotation = leftHandBone.rotation;
+
+        // With the left hand fix on, the left palm depends on the hand's rotation, which depends
+        // on the stick's rotation. Solve twice: first with the animated hand, then with the
+        // gripping hand. The palm is only a few cm from the wrist, so two passes are enough.
+        int passes = alignLeftHand ? 2 : 1;
+        for (int i = 0; i < passes; i++)
+        {
+            Vector3 topPalm = ClampFromSpine(leftHandBone.position + leftHandRotation * leftPalmOffset);
+            if (!TrySolveRotation(bottomPalm, topPalm, out Quaternion stickRotation))
+                return;
+            transform.rotation = stickRotation;
+
+            if (alignLeftHand)
+                leftHandRotation = Quaternion.Slerp(leftHandBone.rotation,
+                                                    stickRotation * Quaternion.Euler(leftHandGripRotation),
+                                                    leftHandAlignWeight);
+        }
+
+        // Slide the stick so its bottom grip point lands in the right palm.
+        transform.position += bottomPalm - transform.TransformPoint(bottomGripPoint);
+
+        // The Animator rewrites the bone every frame, so this never accumulates.
+        if (alignLeftHand)
+            leftHandBone.rotation = leftHandRotation;
+    }
+
+    // Stick rotation that runs the shaft from bottomPalm through topPalm, with the pocket
+    // facing the roll reference.
+    private bool TrySolveRotation(Vector3 bottomPalm, Vector3 topPalm, out Quaternion rotation)
+    {
+        rotation = transform.rotation;
 
         Vector3 shaftDir = topPalm - bottomPalm;
         if (shaftDir.sqrMagnitude < 0.000001f)
-            return;
+            return false;
         shaftDir.Normalize();
 
         // Which way the pocket should face, flattened onto the plane around the shaft.
@@ -110,17 +154,15 @@ public class LacrosseStickGrip : MonoBehaviour
         if (pocketDir.sqrMagnitude < 0.0001f)
             pocketDir = Vector3.ProjectOnPlane(_lastPocketDir, shaftDir);
         if (pocketDir.sqrMagnitude < 0.0001f)
-            return;
+            return false;
         pocketDir.Normalize();
         _lastPocketDir = pocketDir;
 
         // Map the stick's local (shaft, pocket) frame onto the world (shaft, pocket) frame.
         Quaternion worldFrame = Quaternion.LookRotation(shaftDir, pocketDir)
                               * Quaternion.AngleAxis(rollOffset, Vector3.forward);
-        transform.rotation = worldFrame * Quaternion.Inverse(LocalFrame());
-
-        // Slide the stick so its bottom grip point lands in the right palm.
-        transform.position += bottomPalm - transform.TransformPoint(bottomGripPoint);
+        rotation = worldFrame * Quaternion.Inverse(LocalFrame());
+        return true;
     }
 
     // ── Tuning ────────────────────────────────────────────────────
@@ -155,8 +197,13 @@ public class LacrosseStickGrip : MonoBehaviour
         if (pocketNow.sqrMagnitude > 0.0001f && pocketRef.sqrMagnitude > 0.0001f)
             rollOffset = Vector3.SignedAngle(pocketRef, pocketNow, shaftDir);
 
+        // Left hand rotation relative to the stick, so the hand keeps this grip through the shot.
+        leftHandGripRotation = (Quaternion.Inverse(transform.rotation) * leftHandBone.rotation).eulerAngles;
+        alignLeftHand = true;
+
         Debug.Log($"[LacrosseStickGrip] Captured: Right Palm Offset {rightPalmOffset:F3}, " +
-                  $"Left Palm Offset {leftPalmOffset:F3}, Roll Offset {rollOffset:F1}. " +
+                  $"Left Palm Offset {leftPalmOffset:F3}, Roll Offset {rollOffset:F1}, " +
+                  $"Left Hand Grip Rotation {leftHandGripRotation:F1} (Align Left Hand on). " +
                   "Copy Component now, then Paste Component Values after leaving Play mode.", this);
     }
 
