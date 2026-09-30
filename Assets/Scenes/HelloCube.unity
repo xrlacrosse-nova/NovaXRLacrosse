@@ -935,17 +935,17 @@ PrefabInstance:
     - target: {fileID: -8679921383154817045, guid: 9d8eafe6945b2224a812991808c0c6e9,
         type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.03
+      value: 0.019
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9d8eafe6945b2224a812991808c0c6e9,
         type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.030000005
+      value: 0.019
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9d8eafe6945b2224a812991808c0c6e9,
         type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.030000001
+      value: 0.019
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 9d8eafe6945b2224a812991808c0c6e9,
         type: 3}
@@ -1041,12 +1041,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LacrosseStickGrip
   rightHandBone: {fileID: 17038138}
   leftHandBone: {fileID: 1835460686}
-  rightHandPositionOffset: {x: 0, y: 0, z: 0}
-  rightHandRotationOffset: {x: 0, y: 0, z: 0}
-  shaftAxis: {x: 0, y: -1, z: 0}
-  leftHandGripDistance: 0.8
+  rightPalmOffset: {x: 0, y: 0.08, z: 0}
+  leftPalmOffset: {x: 0, y: 0.08, z: 0}
+  shaftAxisLocal: {x: 0, y: 0, z: 1}
+  bottomGripPoint: {x: 0, y: -1.818, z: 2}
+  pocketAxisLocal: {x: 0, y: 1, z: 0}
+  rollReference: {fileID: 229782167}
+  rollReferenceAxis: {x: 0, y: 0, z: 1}
+  rollOffset: 0
   spineBone: {fileID: 2038902672}
-  minDistanceFromSpine: 0.15
+  minDistanceFromSpine: 0.2
 --- !u!1 &700000001
 GameObject:
   m_ObjectHideFlags: 0
