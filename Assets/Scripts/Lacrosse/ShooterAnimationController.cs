@@ -43,7 +43,7 @@ public class ShooterAnimationController : MonoBehaviour
     [Range(0f, 1f)]
     public float releaseNormalizedTime = 0.6f;
 
-    [Tooltip("If the release point isn't reached within this many seconds (e.g. the state name " +
+    [Tooltip("If the Shoot state hasn't started within this many seconds (e.g. the state name " +
              "is wrong), release anyway so a session can never hang waiting on the animation.")]
     [Min(0.1f)]
     public float releaseTimeout = 3f;
@@ -113,23 +113,26 @@ public class ShooterAnimationController : MonoBehaviour
     {
         if (!_watching) return;
 
-        _elapsed += Time.deltaTime;
-
         // The Animator applies Play() during its own update after this frame's Update, so the
         // state info still shows the previous state on the frame PlayShot() was called — skip it.
         if (Time.frameCount > _playFrame)
         {
             AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
-            if (state.shortNameHash == _shootHash && state.normalizedTime >= releaseNormalizedTime)
+            if (state.shortNameHash == _shootHash)
             {
-                Release(state.normalizedTime, timedOut: false);
+                if (state.normalizedTime >= releaseNormalizedTime)
+                    Release(state.normalizedTime, timedOut: false);
+
+                // The clip is playing, so the release point will be reached. The timeout only
+                // guards against the Shoot state never starting, not against a long windup.
                 return;
             }
         }
 
+        _elapsed += Time.deltaTime;
         if (_elapsed >= releaseTimeout)
         {
-            Debug.LogWarning($"[ShooterAnimationController] Release point not reached within {releaseTimeout}s " +
+            Debug.LogWarning($"[ShooterAnimationController] Shoot state did not start within {releaseTimeout}s " +
                              $"— releasing anyway. Check that the '{shootStateName}' state plays the shooting clip.", this);
             Release(-1f, timedOut: true);
         }

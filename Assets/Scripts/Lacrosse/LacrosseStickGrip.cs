@@ -52,8 +52,9 @@ public class LacrosseStickGrip : MonoBehaviour
     [Tooltip("Point on the shaft that sits in the right palm, in the stick's local (mesh) units.")]
     public Vector3 bottomGripPoint = new Vector3(0f, -1.818f, 2f);
 
-    [Tooltip("Local axis, perpendicular to the shaft, that the pocket opens toward.")]
-    public Vector3 pocketAxisLocal = Vector3.up;
+    [Tooltip("Local axis, perpendicular to the shaft, that the pocket opens toward. For the OBJ " +
+             "this is -Y; +Y is the closed back of the head.")]
+    public Vector3 pocketAxisLocal = Vector3.down;
 
     [Header("Roll Around the Shaft")]
     [Tooltip("The pocket faces along Roll Reference Axis of this Transform. Leave empty to use " +
