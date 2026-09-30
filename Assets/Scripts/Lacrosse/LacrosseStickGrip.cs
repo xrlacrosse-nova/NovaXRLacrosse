@@ -207,6 +207,28 @@ public class LacrosseStickGrip : MonoBehaviour
                   "Copy Component now, then Paste Component Values after leaving Play mode.", this);
     }
 
+    /// <summary>
+    /// Turns on Align Left Hand, starting from the hand's current (animated) rotation, without
+    /// touching anything else. Then drag Left Hand Grip Rotation's X/Y/Z in the Inspector to turn
+    /// the hand live. Works while Play mode is running, since this script overrides the Animator.
+    /// </summary>
+    [ContextMenu("Start Left Hand Fix From Current Pose")]
+    void StartLeftHandFixFromCurrentPose()
+    {
+        if (leftHandBone == null)
+        {
+            Debug.LogWarning("[LacrosseStickGrip] Assign Left Hand Bone first.", this);
+            return;
+        }
+
+        leftHandGripRotation = (Quaternion.Inverse(transform.rotation) * leftHandBone.rotation).eulerAngles;
+        leftHandAlignWeight = 1f;
+        alignLeftHand = true;
+
+        Debug.Log($"[LacrosseStickGrip] Left hand fix on, starting at {leftHandGripRotation:F1}. " +
+                  "Drag Left Hand Grip Rotation X/Y/Z to turn the hand.", this);
+    }
+
     // ── Private helpers ───────────────────────────────────────────
 
     private Vector3 RollReferenceDirection()
