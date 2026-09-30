@@ -425,6 +425,12 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: fc2b3a0b85732804990460b6d6c0deab, type: 3}
+--- !u!4 &161493689 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3803884676806522701, guid: 37a094fb39caa7441b08f42bdfa38a14,
+    type: 3}
+  m_PrefabInstance: {fileID: 229782160}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &203844586
 GameObject:
   m_ObjectHideFlags: 0
@@ -924,6 +930,12 @@ Canvas:
   m_SortingLayerID: 0
   m_SortingOrder: 0
   m_TargetDisplay: 0
+--- !u!4 &442861648 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4308596981445705757, guid: 37a094fb39caa7441b08f42bdfa38a14,
+    type: 3}
+  m_PrefabInstance: {fileID: 229782160}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &588939133
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1054,6 +1066,11 @@ MonoBehaviour:
   leftHandAlignWeight: 1
   spineBone: {fileID: 2038902672}
   minDistanceFromSpine: 0.2
+  bodyBottomBone: {fileID: 442861648}
+  bodyTopBone: {fileID: 161493689}
+  bodyRadius: 0.12
+  stickClearance: 0.04
+  stickLength: 53.6
 --- !u!1 &700000001
 GameObject:
   m_ObjectHideFlags: 0
