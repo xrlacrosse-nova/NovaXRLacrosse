@@ -83,6 +83,15 @@ public class LacrosseStickGrip : MonoBehaviour
     [Range(0f, 1f)]
     public float leftHandAlignWeight = 1f;
 
+    [Tooltip("Bend the left arm (elbow + shoulder) so the left palm stays on the shaft when the " +
+             "stick is pushed off it, e.g. by Body Collision. Uses the left hand bone's parent " +
+             "(forearm) and grandparent (upper arm).")]
+    public bool leftArmReach = true;
+
+    [Tooltip("1 = the left palm is pulled fully onto the shaft, 0 = the animation's arm.")]
+    [Range(0f, 1f)]
+    public float leftArmReachWeight = 1f;
+
     [Header("Body Clamp (optional)")]
     [Tooltip("If assigned, the left palm target is kept at least Min Distance From Spine away " +
              "from this bone, so the shaft can't rotate through the torso.")]
@@ -156,9 +165,61 @@ public class LacrosseStickGrip : MonoBehaviour
         // Slide the stick so its bottom grip point lands in the right palm.
         transform.position += bottomPalm - transform.TransformPoint(bottomGripPoint);
 
-        // The Animator rewrites the bone every frame, so this never accumulates.
+        // Pull the left palm back onto the shaft if the stick was pushed off it.
+        if (leftArmReach && leftArmReachWeight > 0f)
+            ReachLeftArmToShaft(bottomPalm, leftHandRotation);
+
+        // The Animator rewrites the bones every frame, so none of this accumulates. The hand's
+        // world rotation is set last, since the arm reach rotates its parents.
         if (alignLeftHand)
             leftHandBone.rotation = leftHandRotation;
+    }
+
+    // Two-bone IK on the left arm: bends the elbow to the right length, then swings the upper
+    // arm, so the left palm lands on the nearest point of the shaft. The elbow stays in the
+    // plane the animation put it in, since the swing is the smallest rotation that works.
+    private void ReachLeftArmToShaft(Vector3 bottomPalm, Quaternion handRotation)
+    {
+        Transform forearm = leftHandBone.parent;
+        Transform upperArm = forearm != null ? forearm.parent : null;
+        if (upperArm == null)
+            return;
+
+        Vector3 shaftDir = transform.TransformDirection(shaftAxisLocal).normalized;
+        Vector3 palmOffsetWorld = handRotation * leftPalmOffset;
+        Vector3 palm = leftHandBone.position + palmOffsetWorld;
+        Vector3 onShaft = bottomPalm + shaftDir * Vector3.Dot(palm - bottomPalm, shaftDir);
+
+        Vector3 wristTarget = Vector3.Lerp(leftHandBone.position, onShaft - palmOffsetWorld, leftArmReachWeight);
+        if ((wristTarget - leftHandBone.position).sqrMagnitude < 0.000001f)
+            return;
+
+        Vector3 shoulder = upperArm.position;
+        Vector3 elbow = forearm.position;
+        float upperLength = Vector3.Distance(shoulder, elbow);
+        float lowerLength = Vector3.Distance(elbow, leftHandBone.position);
+        float reach = Mathf.Clamp(Vector3.Distance(shoulder, wristTarget),
+                                  Mathf.Abs(upperLength - lowerLength) + 0.001f,
+                                  upperLength + lowerLength - 0.001f);
+
+        // 1) Elbow: open or close it until shoulder-to-wrist equals the distance to the target.
+        Vector3 toShoulder = shoulder - elbow;
+        Vector3 toWrist = leftHandBone.position - elbow;
+        Vector3 bendAxis = Vector3.Cross(toShoulder, toWrist);
+        if (bendAxis.sqrMagnitude < 0.000001f)
+            bendAxis = Vector3.Cross(toShoulder, upperArm.forward);
+        if (bendAxis.sqrMagnitude > 0.000001f)
+        {
+            float currentAngle = Vector3.Angle(toShoulder, toWrist);
+            float cosTarget = (upperLength * upperLength + lowerLength * lowerLength - reach * reach)
+                            / (2f * upperLength * lowerLength);
+            float targetAngle = Mathf.Acos(Mathf.Clamp(cosTarget, -1f, 1f)) * Mathf.Rad2Deg;
+            forearm.rotation = Quaternion.AngleAxis(targetAngle - currentAngle, bendAxis.normalized) * forearm.rotation;
+        }
+
+        // 2) Shoulder: swing the whole arm so the wrist points at the target.
+        upperArm.rotation = Quaternion.FromToRotation(leftHandBone.position - shoulder, wristTarget - shoulder)
+                          * upperArm.rotation;
     }
 
     // Stick rotation that runs the shaft from bottomPalm through topPalm, with the pocket
