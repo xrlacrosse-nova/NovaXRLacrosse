@@ -89,6 +89,29 @@ public class LacrosseStickGrip : MonoBehaviour
     public Transform spineBone;
     public float minDistanceFromSpine = 0.15f;
 
+    [Header("Body Collision (optional)")]
+    [Tooltip("Bottom of the torso capsule, e.g. the Hips bone. The part of the stick past the " +
+             "left hand is swung around the right hand so it stays outside this capsule.")]
+    public Transform bodyBottomBone;
+
+    [Tooltip("Top of the torso capsule, e.g. the Neck bone.")]
+    public Transform bodyTopBone;
+
+    [Tooltip("Torso capsule radius in meters.")]
+    [Min(0f)]
+    public float bodyRadius = 0.15f;
+
+    [Tooltip("Extra gap in meters kept between the stick and the torso, for the shaft and head thickness.")]
+    [Min(0f)]
+    public float stickClearance = 0.04f;
+
+    [Tooltip("Stick length from Bottom Grip Point to the tip of the head, in the stick's local " +
+             "(mesh) units. The OBJ's head tip is at z = 55.6.")]
+    public float stickLength = 53.6f;
+
+    private const int BodySamples = 10;
+    private const int BodyIterations = 4;
+
     // Last good pocket direction, used when the roll reference lines up with the shaft.
     private Vector3 _lastPocketDir = Vector3.up;
 
@@ -145,9 +168,11 @@ public class LacrosseStickGrip : MonoBehaviour
         rotation = transform.rotation;
 
         Vector3 shaftDir = topPalm - bottomPalm;
-        if (shaftDir.sqrMagnitude < 0.000001f)
+        float handSpan = shaftDir.magnitude;
+        if (handSpan < 0.001f)
             return false;
-        shaftDir.Normalize();
+        shaftDir /= handSpan;
+        shaftDir = AvoidBody(bottomPalm, shaftDir, handSpan);
 
         // Which way the pocket should face, flattened onto the plane around the shaft.
         Vector3 pocketDir = Vector3.ProjectOnPlane(RollReferenceDirection(), shaftDir);
@@ -259,6 +284,66 @@ public class LacrosseStickGrip : MonoBehaviour
         return spineBone.position + direction * minDistanceFromSpine;
     }
 
+    // Swings the shaft around the right palm until the part past the left hand is outside the
+    // torso capsule. The part between the hands is left alone: it's wherever the animation
+    // put the hands, and rotating around the right hand can't move it off the body anyway.
+    private Vector3 AvoidBody(Vector3 pivot, Vector3 shaftDir, float handSpan)
+    {
+        if (bodyBottomBone == null || bodyTopBone == null)
+            return shaftDir;
+
+        Vector3 a = bodyBottomBone.position;
+        Vector3 b = bodyTopBone.position;
+        float radius = bodyRadius + stickClearance;
+        float length = transform.TransformVector(shaftAxisLocal.normalized * stickLength).magnitude;
+        if (length <= handSpan)
+            return shaftDir;
+
+        for (int iteration = 0; iteration < BodyIterations; iteration++)
+        {
+            // Find the deepest point of the overhang inside the capsule.
+            float deepest = 0f;
+            Vector3 deepestPoint = Vector3.zero;
+            Vector3 deepestAxisPoint = Vector3.zero;
+            for (int i = 0; i <= BodySamples; i++)
+            {
+                Vector3 p = pivot + shaftDir * Mathf.Lerp(handSpan, length, (float)i / BodySamples);
+                Vector3 onAxis = ClosestPointOnSegment(p, a, b);
+                float depth = radius - Vector3.Distance(p, onAxis);
+                if (depth > deepest)
+                {
+                    deepest = depth;
+                    deepestPoint = p;
+                    deepestAxisPoint = onAxis;
+                }
+            }
+
+            if (deepest <= 0f)
+                break;
+
+            // Push that point straight out to the capsule surface and re-aim the shaft through it.
+            Vector3 away = deepestPoint - deepestAxisPoint;
+            if (away.sqrMagnitude < 0.000001f)
+                away = Vector3.Cross(b - a, shaftDir);
+            if (away.sqrMagnitude < 0.000001f)
+                break;
+
+            Vector3 pushed = deepestAxisPoint + away.normalized * (radius + 0.005f);
+            shaftDir = (pushed - pivot).normalized;
+        }
+
+        return shaftDir;
+    }
+
+    private static Vector3 ClosestPointOnSegment(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float lengthSq = ab.sqrMagnitude;
+        if (lengthSq < 0.000001f)
+            return a;
+        return a + ab * Mathf.Clamp01(Vector3.Dot(p - a, ab) / lengthSq);
+    }
+
     private Quaternion LocalFrame()
     {
         Vector3 pocket = Vector3.ProjectOnPlane(pocketAxisLocal, shaftAxisLocal);
@@ -275,7 +360,7 @@ public class LacrosseStickGrip : MonoBehaviour
         // Shaft centerline and grip point on the stick, drawn from local space. If these don't
         // line up with the mesh in the Scene view, Shaft Axis / Bottom Grip Point are wrong.
         Vector3 grip = transform.TransformPoint(bottomGripPoint);
-        Vector3 shaftEnd = transform.TransformPoint(bottomGripPoint + shaftAxisLocal.normalized * 50f);
+        Vector3 shaftEnd = transform.TransformPoint(bottomGripPoint + shaftAxisLocal.normalized * stickLength);
 
         Gizmos.color = Color.yellow;
         Gizmos.DrawLine(grip, shaftEnd);
@@ -292,6 +377,19 @@ public class LacrosseStickGrip : MonoBehaviour
             Gizmos.DrawWireSphere(PalmPosition(rightHandBone, rightPalmOffset), 0.02f);
         if (leftHandBone != null)
             Gizmos.DrawWireSphere(PalmPosition(leftHandBone, leftPalmOffset), 0.02f);
+
+        // Torso capsule the stick is kept out of (inner = body, outer = body + clearance).
+        if (bodyBottomBone != null && bodyTopBone != null)
+        {
+            Vector3 a = bodyBottomBone.position;
+            Vector3 b = bodyTopBone.position;
+            Gizmos.color = Color.red;
+            Gizmos.DrawWireSphere(a, bodyRadius);
+            Gizmos.DrawWireSphere(b, bodyRadius);
+            Gizmos.DrawLine(a, b);
+            Gizmos.color = new Color(1f, 0.5f, 0f);
+            Gizmos.DrawWireSphere(Vector3.Lerp(a, b, 0.5f), bodyRadius + stickClearance);
+        }
     }
 #endif
 }
