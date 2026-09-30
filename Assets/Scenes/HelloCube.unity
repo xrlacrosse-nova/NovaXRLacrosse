@@ -1068,7 +1068,7 @@ MonoBehaviour:
   minDistanceFromSpine: 0.2
   bodyBottomBone: {fileID: 442861648}
   bodyTopBone: {fileID: 161493689}
-  bodyRadius: 0.2
+  bodyRadius: 0.25
   stickClearance: 0.04
   stickLength: 53.6
 --- !u!1 &700000001
