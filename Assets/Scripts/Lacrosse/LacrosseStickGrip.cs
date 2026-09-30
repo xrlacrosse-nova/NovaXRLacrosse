@@ -25,8 +25,9 @@ using UnityEngine;
 ///    hand bone into "Left Hand Bone" (top hand). For a lefty shooter that's the right way round.
 /// 3. With the stick selected, check the gizmos: the yellow line should run down the middle of
 ///    the shaft, and the green sphere should sit near the butt end.
-/// 4. Enter Play mode and tune (all fields update live): palm offsets so the cyan spheres sit
-///    inside each palm, then Roll Offset so the pocket faces the right way.
+/// 4. Enter Play mode and pause. Move/rotate the stick in the Scene view until it sits in both
+///    hands, then right-click this component -> Capture Grip From Current Pose. That fills in
+///    the palm offsets and Roll Offset. (Or tune those fields by hand; they update live.)
 /// </summary>
 public class LacrosseStickGrip : MonoBehaviour
 {
@@ -105,10 +106,7 @@ public class LacrosseStickGrip : MonoBehaviour
         shaftDir.Normalize();
 
         // Which way the pocket should face, flattened onto the plane around the shaft.
-        Vector3 reference = rollReference != null
-            ? rollReference.TransformDirection(rollReferenceAxis)
-            : rollReferenceAxis;
-        Vector3 pocketDir = Vector3.ProjectOnPlane(reference, shaftDir);
+        Vector3 pocketDir = Vector3.ProjectOnPlane(RollReferenceDirection(), shaftDir);
         if (pocketDir.sqrMagnitude < 0.0001f)
             pocketDir = Vector3.ProjectOnPlane(_lastPocketDir, shaftDir);
         if (pocketDir.sqrMagnitude < 0.0001f)
@@ -125,7 +123,51 @@ public class LacrosseStickGrip : MonoBehaviour
         transform.position += bottomPalm - transform.TransformPoint(bottomGripPoint);
     }
 
+    // ── Tuning ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Works out the palm offsets and roll from wherever the stick is right now. In Play mode:
+    /// pause, move/rotate the stick in the Scene view until it sits in both hands with the
+    /// pocket facing the right way, then run this from the component's context menu.
+    /// Play-mode values are lost on exit, so use Copy Component / Paste Component Values after.
+    /// </summary>
+    [ContextMenu("Capture Grip From Current Pose")]
+    void CaptureGripFromCurrentPose()
+    {
+        if (rightHandBone == null || leftHandBone == null)
+        {
+            Debug.LogWarning("[LacrosseStickGrip] Assign both hand bones before capturing.", this);
+            return;
+        }
+
+        // Right palm = the stick's bottom grip point, wherever it is now.
+        Vector3 grip = transform.TransformPoint(bottomGripPoint);
+        Vector3 shaftDir = transform.TransformDirection(shaftAxisLocal).normalized;
+        rightPalmOffset = Quaternion.Inverse(rightHandBone.rotation) * (grip - rightHandBone.position);
+
+        // Left palm = the point on the shaft closest to the left hand bone.
+        Vector3 onShaft = grip + Vector3.Project(leftHandBone.position - grip, shaftDir);
+        leftPalmOffset = Quaternion.Inverse(leftHandBone.rotation) * (onShaft - leftHandBone.position);
+
+        // Roll = angle from the reference direction to where the pocket faces now.
+        Vector3 pocketNow = Vector3.ProjectOnPlane(transform.TransformDirection(pocketAxisLocal), shaftDir);
+        Vector3 pocketRef = Vector3.ProjectOnPlane(RollReferenceDirection(), shaftDir);
+        if (pocketNow.sqrMagnitude > 0.0001f && pocketRef.sqrMagnitude > 0.0001f)
+            rollOffset = Vector3.SignedAngle(pocketRef, pocketNow, shaftDir);
+
+        Debug.Log($"[LacrosseStickGrip] Captured: Right Palm Offset {rightPalmOffset:F3}, " +
+                  $"Left Palm Offset {leftPalmOffset:F3}, Roll Offset {rollOffset:F1}. " +
+                  "Copy Component now, then Paste Component Values after leaving Play mode.", this);
+    }
+
     // ── Private helpers ───────────────────────────────────────────
+
+    private Vector3 RollReferenceDirection()
+    {
+        return rollReference != null
+            ? rollReference.TransformDirection(rollReferenceAxis)
+            : rollReferenceAxis;
+    }
 
     // Rotation only, not TransformPoint, so the offset stays in meters even if the rig's
     // bones carry an import scale.
