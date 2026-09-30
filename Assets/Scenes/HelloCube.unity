@@ -1264,7 +1264,7 @@ MonoBehaviour:
   maxPreStartDelay: 5
   minShotInterval: 3
   maxShotInterval: 5
-  shooterAnimation: {fileID: 0}
+  shooterAnimation: {fileID: 229782168}
   countdownText: {fileID: 1065477489}
 --- !u!114 &866954163
 MonoBehaviour:
