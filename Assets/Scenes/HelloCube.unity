@@ -627,6 +627,10 @@ PrefabInstance:
         type: 3}
       insertIndex: -1
       addedObject: {fileID: 229782166}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 37a094fb39caa7441b08f42bdfa38a14,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 229782168}
   m_SourcePrefab: {fileID: 100100000, guid: 37a094fb39caa7441b08f42bdfa38a14, type: 3}
 --- !u!1 &229782161 stripped
 GameObject:
@@ -662,6 +666,26 @@ Transform:
     type: 3}
   m_PrefabInstance: {fileID: 229782160}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &229782168
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 229782161}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 95253bc2180a2f04891040be1d4118d7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShooterAnimationController
+  animator: {fileID: 229782166}
+  launcher: {fileID: 866954162}
+  shootStateName: Shoot
+  idleStateName: Idle
+  releaseNormalizedTime: 0.6
+  releaseTimeout: 3
+  resetBlendTime: 0.15
+  logRelease: 0
 --- !u!1 &372276229
 GameObject:
   m_ObjectHideFlags: 0
@@ -980,7 +1004,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9d8eafe6945b2224a812991808c0c6e9,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1489855462}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 9d8eafe6945b2224a812991808c0c6e9,
         type: 3}
@@ -1222,7 +1250,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 72670fe5b9a7cf640b5bc35fc6bbde84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RandomLauncher
-  launchOrigin: {fileID: 700000002}
+  launchOrigin: {fileID: 1489855462}
   aimMode: 0
   edgePadding: 0.05
   quadrantDepth: 0.65
@@ -1236,6 +1264,7 @@ MonoBehaviour:
   maxPreStartDelay: 5
   minShotInterval: 3
   maxShotInterval: 5
+  shooterAnimation: {fileID: 0}
   countdownText: {fileID: 1065477489}
 --- !u!114 &866954163
 MonoBehaviour:
@@ -1699,6 +1728,37 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!1 &1489855461
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1489855462}
+  m_Layer: 0
+  m_Name: BallReleasePoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1489855462
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1489855461}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 2.2, y: -0, z: 53.1}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 588939135}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1507286324
 GameObject:
   m_ObjectHideFlags: 0
