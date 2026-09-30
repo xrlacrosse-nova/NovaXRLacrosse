@@ -1049,6 +1049,9 @@ MonoBehaviour:
   rollReference: {fileID: 229782167}
   rollReferenceAxis: {x: 0, y: 0, z: 1}
   rollOffset: 0
+  alignLeftHand: 1
+  leftHandGripRotation: {x: 18.2, y: 103.7, z: 157.1}
+  leftHandAlignWeight: 1
   spineBone: {fileID: 2038902672}
   minDistanceFromSpine: 0.2
 --- !u!1 &700000001
