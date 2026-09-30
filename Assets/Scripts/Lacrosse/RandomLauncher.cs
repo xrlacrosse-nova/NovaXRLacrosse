@@ -25,6 +25,9 @@ using MagicLeap.Examples;
 ///      (controller trigger button, or Space bar in the Editor), then a session of ShotsPerSession
 ///      shots runs automatically. Alternatively, call LaunchBall() directly from any other script
 ///      or Unity Event to fire a single shot outside the session flow.
+///   4. Optional: drag the shooter avatar (with ShooterAnimationController) into Shooter Animation.
+///      Session shots then play the shooting animation and launch on its release frame, and
+///      LaunchOrigin should be an empty parented to the shooter's stick head.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(GoalDetector))]
@@ -99,6 +102,11 @@ public class RandomLauncher : MonoBehaviour
     [Min(0f)]
     public float maxShotInterval = 10f;
 
+    [Header("Shooter Animation")]
+    [Tooltip("Optional. If assigned, each session shot plays the shooter's shooting animation and the " +
+             "ball launches on its release frame. Leave empty to launch instantly.")]
+    public ShooterAnimationController shooterAnimation;
+
     [Header("UI (World Space Canvas)")]
     [Tooltip("TextMeshPro label used for GET READY / countdown digits / GO!. Leave unassigned to disable.")]
     public TextMeshProUGUI countdownText;
@@ -116,6 +124,10 @@ public class RandomLauncher : MonoBehaviour
     private bool _sessionRunning = false;
     private bool _controllerTriggerSubscribed = false;
     private int _shotsFiredThisSession = 0;
+
+    // shot waiting on the shooter animation's release frame
+    private bool _awaitingRelease = false;
+    private Quadrant _pendingQuadrant;
 
     // pre-start countdown display state
     private bool _showCountdown = false;
@@ -151,6 +163,8 @@ public class RandomLauncher : MonoBehaviour
         _goalDetector.OnSaved += HandleSaved;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned += HandleDespawned;
+        if (shooterAnimation != null)
+            shooterAnimation.OnRelease += HandleShooterRelease;
 
         // Don't touch MagicLeapController.Instance in Awake() — it needs an InputActionManager
         // already present in the scene, which may not be true that early. Try here instead, and
@@ -175,6 +189,8 @@ public class RandomLauncher : MonoBehaviour
         _goalDetector.OnSaved -= HandleSaved;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned -= HandleDespawned;
+        if (shooterAnimation != null)
+            shooterAnimation.OnRelease -= HandleShooterRelease;
 
         if (_controllerTriggerSubscribed)
         {
@@ -190,6 +206,10 @@ public class RandomLauncher : MonoBehaviour
             Debug.LogWarning("[RandomLauncher] LaunchOrigin is not set. Using the ball's current position as origin. " +
                              "Assign a Transform in the Inspector for more realistic shots.");
         }
+
+        // The ball only appears once it's shot — LaunchToward() shows it again.
+        if (_floorBoundary != null)
+            _floorBoundary.Hide();
 
         Debug.Log("[RandomLauncher] Waiting for start trigger (controller trigger"
 #if UNITY_EDITOR
@@ -289,6 +309,12 @@ public class RandomLauncher : MonoBehaviour
     {
         _sessionRunning = true;
         _shotsFiredThisSession = 0;
+        _awaitingRelease = false;
+
+        // The ball stays out of sight until it's shot — LaunchToward() shows it again.
+        if (_floorBoundary != null)
+            _floorBoundary.Hide();
+
         OnSessionStarted?.Invoke();
 
         float delay = Random.Range(minPreStartDelay, maxPreStartDelay);
@@ -310,7 +336,28 @@ public class RandomLauncher : MonoBehaviour
     private void FireNextShot()
     {
         _shotsFiredThisSession++;
-        LaunchBall();
+
+        if (shooterAnimation == null || !shooterAnimation.IsAvailable)
+        {
+            LaunchBall();
+            return;
+        }
+
+        // Pick the quadrant now, but launch on the animation's release frame
+        // (HandleShooterRelease), so the ball leaves the stick when the avatar shoots.
+        _pendingQuadrant = PickRandomQuadrant();
+        _awaitingRelease = true;
+        shooterAnimation.PlayShot();
+    }
+
+    /// <summary>Called by ShooterAnimationController on the shooting clip's release frame.
+    /// Ignores releases no session shot is waiting on (e.g. its Test Shot context menu).</summary>
+    private void HandleShooterRelease()
+    {
+        if (!_awaitingRelease) return;
+
+        _awaitingRelease = false;
+        LaunchToward(_pendingQuadrant);
     }
 
     // ── Public API ────────────────────────────────────────────────
@@ -318,17 +365,12 @@ public class RandomLauncher : MonoBehaviour
     /// <summary>
     /// Randomly picks one of the four quadrants, logs it, and launches the ball toward it
     /// using the current <see cref="aimMode"/>. Safe to call from other scripts or Unity Events at
-    /// any time — this fires a single shot outside the session flow (session shots call this
-    /// internally via FireNextShot()).
+    /// any time — this fires a single shot immediately, outside the session flow and without the
+    /// shooter animation (session shots go through FireNextShot()).
     /// </summary>
     public void LaunchBall()
     {
-        Quadrant[] quads = (Quadrant[])System.Enum.GetValues(typeof(Quadrant));
-        Quadrant quadrant = quads[Random.Range(0, quads.Length)];
-
-        Debug.Log($"[RandomLauncher] Aiming at quadrant: {quadrant}");
-
-        LaunchToward(quadrant);
+        LaunchToward(PickRandomQuadrant());
     }
 
     /// <summary>
@@ -389,6 +431,15 @@ public class RandomLauncher : MonoBehaviour
     }
 
     // ── Private helpers ───────────────────────────────────────────
+
+    private Quadrant PickRandomQuadrant()
+    {
+        Quadrant[] quads = (Quadrant[])System.Enum.GetValues(typeof(Quadrant));
+        Quadrant quadrant = quads[Random.Range(0, quads.Length)];
+
+        Debug.Log($"[RandomLauncher] Aiming at quadrant: {quadrant}");
+        return quadrant;
+    }
 
     /// <summary>
     /// Returns the world-space aim point inside the requested quadrant, per the current AimMode.
