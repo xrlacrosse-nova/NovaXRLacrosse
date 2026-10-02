@@ -90,6 +90,11 @@ public class LacrosseStickGrip : MonoBehaviour
     [Range(0f, 1f)]
     public float leftArmReachWeight = 1f;
 
+    [Tooltip("Extra gap in meters between the left elbow and the torso capsule (arm thickness). " +
+             "Uses the Body Bottom/Top Bone and Body Radius from Body Collision below.")]
+    [Min(0f)]
+    public float armClearance = 0.04f;
+
     [Header("Body Clamp (optional)")]
     [Tooltip("If assigned, the left palm target is kept at least Min Distance From Spine away " +
              "from this bone, so the shaft can't rotate through the torso.")]
@@ -220,6 +225,20 @@ public class LacrosseStickGrip : MonoBehaviour
         if (pole.sqrMagnitude < 0.000001f)
             pole = Vector3.ProjectOnPlane(-transform.TransformDirection(pocketAxisLocal), reachDir);
         Vector3 newElbow = shoulder + reachDir * along + pole.normalized * height;
+
+        // Keep the elbow out of the torso too. Pushing it out changes its distance from the
+        // shoulder, so snap it back to the upper arm's length each time.
+        if (bodyBottomBone != null && bodyTopBone != null && upperLength > 0.0001f)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                newElbow = PushOutOfBody(newElbow, bodyRadius + armClearance);
+                Vector3 fromShoulder = newElbow - shoulder;
+                if (fromShoulder.sqrMagnitude < 0.000001f)
+                    break;
+                newElbow = shoulder + fromShoulder.normalized * upperLength;
+            }
+        }
 
         upperArm.rotation = Quaternion.FromToRotation(elbow - shoulder, newElbow - shoulder) * upperArm.rotation;
         // The forearm moved with the upper arm, so aim it from its new position.
@@ -414,6 +433,19 @@ public class LacrosseStickGrip : MonoBehaviour
         }
 
         return shaftDir;
+    }
+
+    private Vector3 PushOutOfBody(Vector3 point, float radius)
+    {
+        Vector3 a = bodyBottomBone.position;
+        Vector3 b = bodyTopBone.position;
+        Vector3 onAxis = ClosestPointOnSegment(point, a, b);
+        Vector3 away = point - onAxis;
+        if (away.magnitude >= radius)
+            return point;
+        if (away.sqrMagnitude < 0.000001f)
+            away = Vector3.Cross(b - a, transform.right);
+        return onAxis + away.normalized * radius;
     }
 
     private static Vector3 ClosestPointOnSegment(Vector3 p, Vector3 a, Vector3 b)
