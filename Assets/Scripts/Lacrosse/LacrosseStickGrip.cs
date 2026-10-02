@@ -83,6 +83,13 @@ public class LacrosseStickGrip : MonoBehaviour
     [Range(0f, 1f)]
     public float leftHandAlignWeight = 1f;
 
+    [Header("Left Arm Reach")]
+    [Tooltip("Bends the left arm (the hand bone's parent and grandparent: forearm and upper arm) " +
+             "so the left palm stays on the shaft when the body clamp pushes the stick away from " +
+             "the animated hand. 0 = off. Does nothing on frames where the hand is already on the shaft.")]
+    [Range(0f, 1f)]
+    public float leftArmReachWeight = 1f;
+
     [Header("Body Clamp (optional)")]
     [Tooltip("If assigned, the left palm target is kept at least Min Distance From Spine away " +
              "from this bone, so the shaft can't rotate through the torso.")]
@@ -166,9 +173,59 @@ public class LacrosseStickGrip : MonoBehaviour
         // Slide the stick so its bottom grip point lands in the right palm.
         transform.position += bottomPalm - transform.TransformPoint(bottomGripPoint);
 
-        // The Animator rewrites the bone every frame, so this never accumulates.
+        // The Animator rewrites the bones every frame, so none of this accumulates.
+        if (leftArmReachWeight > 0f)
+            ReachLeftHandToShaft(leftHandRotation);
+
         if (alignLeftHand)
             leftHandBone.rotation = leftHandRotation;
+    }
+
+    // Two-bone reach: keeps the shoulder fixed and bends the upper arm and forearm so the left
+    // palm lands on the nearest point of the (already posed) shaft. The elbow keeps the side it
+    // already bends toward. If the target is out of reach, the arm stretches straight toward it.
+    private void ReachLeftHandToShaft(Quaternion handRotation)
+    {
+        Transform forearm = leftHandBone.parent;
+        Transform upperArm = forearm != null ? forearm.parent : null;
+        if (forearm == null || upperArm == null)
+            return;
+
+        Vector3 palmOffsetWorld = handRotation * leftPalmOffset;
+        Vector3 gripWorld = transform.TransformPoint(bottomGripPoint);
+        Vector3 shaftDir = transform.TransformDirection(shaftAxisLocal).normalized;
+        Vector3 palm = leftHandBone.position + palmOffsetWorld;
+        Vector3 palmOnShaft = gripWorld + Vector3.Project(palm - gripWorld, shaftDir);
+
+        Vector3 shoulder = upperArm.position;
+        Vector3 elbow = forearm.position;
+        Vector3 wrist = leftHandBone.position;
+        Vector3 wristTarget = Vector3.Lerp(wrist, palmOnShaft - palmOffsetWorld, leftArmReachWeight);
+        if ((wristTarget - wrist).sqrMagnitude < 0.000001f)
+            return;
+
+        float upperLength = Vector3.Distance(shoulder, elbow);
+        float lowerLength = Vector3.Distance(elbow, wrist);
+        Vector3 toTarget = wristTarget - shoulder;
+        float distance = Mathf.Clamp(toTarget.magnitude,
+                                     Mathf.Abs(upperLength - lowerLength) + 0.001f,
+                                     upperLength + lowerLength - 0.001f);
+        Vector3 reachDir = toTarget.normalized;
+
+        // Law of cosines: elbow sits `along` the reach line and `height` off it, on the same
+        // side the animation already had it.
+        float along = (upperLength * upperLength - lowerLength * lowerLength + distance * distance) / (2f * distance);
+        float height = Mathf.Sqrt(Mathf.Max(0f, upperLength * upperLength - along * along));
+        Vector3 pole = Vector3.ProjectOnPlane(elbow - shoulder, reachDir);
+        if (pole.sqrMagnitude < 0.000001f)
+            pole = Vector3.ProjectOnPlane(-transform.TransformDirection(pocketAxisLocal), reachDir);
+        Vector3 newElbow = shoulder + reachDir * along + pole.normalized * height;
+
+        upperArm.rotation = Quaternion.FromToRotation(elbow - shoulder, newElbow - shoulder) * upperArm.rotation;
+        // The forearm moved with the upper arm, so aim it from its new position.
+        forearm.rotation = Quaternion.FromToRotation(leftHandBone.position - forearm.position,
+                                                     shoulder + reachDir * distance - forearm.position)
+                         * forearm.rotation;
     }
 
     // Stick rotation that runs the shaft from bottomPalm through topPalm, with the pocket
