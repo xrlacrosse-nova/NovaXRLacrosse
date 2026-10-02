@@ -200,17 +200,37 @@ public class LacrosseStickGrip : MonoBehaviour
         Vector3 gripWorld = transform.TransformPoint(bottomGripPoint);
         Vector3 shaftDir = transform.TransformDirection(shaftAxisLocal).normalized;
         Vector3 palm = leftHandBone.position + palmOffsetWorld;
-        Vector3 palmOnShaft = gripWorld + Vector3.Project(palm - gripWorld, shaftDir);
 
         Vector3 shoulder = upperArm.position;
         Vector3 elbow = forearm.position;
         Vector3 wrist = leftHandBone.position;
+        float upperLength = Vector3.Distance(shoulder, elbow);
+        float lowerLength = Vector3.Distance(elbow, wrist);
+
+        // Spot on the shaft (distance t along it from the grip point) nearest the animated palm.
+        // If the arm can't reach it, slide along the shaft to the nearest spot it can reach:
+        // wrist(t) = grip + dir*t - palmOffset must be within the arm's length of the shoulder.
+        float t = Vector3.Dot(palm - gripWorld, shaftDir);
+        float maxReach = (upperLength + lowerLength) * 0.97f;
+        Vector3 q = gripWorld - palmOffsetWorld - shoulder;
+        float qAlong = Vector3.Dot(q, shaftDir);
+        float discriminant = qAlong * qAlong - (q.sqrMagnitude - maxReach * maxReach);
+        float closestToShoulder = -qAlong;
+        if (discriminant >= 0f)
+        {
+            float halfRange = Mathf.Sqrt(discriminant);
+            t = Mathf.Clamp(t, closestToShoulder - halfRange, closestToShoulder + halfRange);
+        }
+        else
+        {
+            t = closestToShoulder;
+        }
+        Vector3 palmOnShaft = gripWorld + shaftDir * t;
+
         Vector3 wristTarget = Vector3.Lerp(wrist, palmOnShaft - palmOffsetWorld, leftArmReachWeight);
         if ((wristTarget - wrist).sqrMagnitude < 0.000001f)
             return;
 
-        float upperLength = Vector3.Distance(shoulder, elbow);
-        float lowerLength = Vector3.Distance(elbow, wrist);
         Vector3 toTarget = wristTarget - shoulder;
         float distance = Mathf.Clamp(toTarget.magnitude,
                                      Mathf.Abs(upperLength - lowerLength) + 0.001f,
