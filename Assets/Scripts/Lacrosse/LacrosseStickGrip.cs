@@ -109,8 +109,9 @@ public class LacrosseStickGrip : MonoBehaviour
              "(mesh) units. The OBJ's head tip is at z = 55.6.")]
     public float stickLength = 53.6f;
 
-    private const int BodySamples = 10;
-    private const int BodyIterations = 4;
+    private const int BodySamples = 20;
+    private const int BodyMaxSteps = 25;
+    private const float BodyStepDegrees = 3f;
 
     // Last good pocket direction, used when the roll reference lines up with the shaft.
     private Vector3 _lastPocketDir = Vector3.up;
@@ -284,9 +285,9 @@ public class LacrosseStickGrip : MonoBehaviour
         return spineBone.position + direction * minDistanceFromSpine;
     }
 
-    // Swings the shaft around the right palm until the part past the left hand is outside the
-    // torso capsule. The part between the hands is left alone: it's wherever the animation
-    // put the hands, and rotating around the right hand can't move it off the body anyway.
+    // Swings the shaft around the right palm until the whole pole (butt end to head tip) is
+    // outside the torso capsule. Parts near the right palm barely move when swinging around it,
+    // so if the animation itself puts the hands inside the body, the step cap stops the swing.
     private Vector3 AvoidBody(Vector3 pivot, Vector3 shaftDir, float handSpan)
     {
         if (bodyBottomBone == null || bodyTopBone == null)
@@ -296,18 +297,24 @@ public class LacrosseStickGrip : MonoBehaviour
         Vector3 b = bodyTopBone.position;
         float radius = bodyRadius + stickClearance;
         float length = transform.TransformVector(shaftAxisLocal.normalized * stickLength).magnitude;
+        // Distance from the right palm back to the butt end, so the whole pole is checked.
+        float buttLength = transform.TransformVector(
+            shaftAxisLocal.normalized * Mathf.Max(0f, Vector3.Dot(bottomGripPoint, shaftAxisLocal.normalized))).magnitude;
         if (length <= handSpan)
             return shaftDir;
 
-        for (int iteration = 0; iteration < BodyIterations; iteration++)
+        // Rotate in small steps toward the direction that moves the deepest point out of the
+        // capsule, until the whole overhang is clear. Small steps always converge (unlike
+        // re-aiming through one point, which changes that point's distance from the pivot and
+        // can push another sample back in).
+        for (int iteration = 0; iteration < BodyMaxSteps; iteration++)
         {
-            // Find the deepest point of the overhang inside the capsule.
             float deepest = 0f;
             Vector3 deepestPoint = Vector3.zero;
             Vector3 deepestAxisPoint = Vector3.zero;
             for (int i = 0; i <= BodySamples; i++)
             {
-                Vector3 p = pivot + shaftDir * Mathf.Lerp(handSpan, length, (float)i / BodySamples);
+                Vector3 p = pivot + shaftDir * Mathf.Lerp(-buttLength, length, (float)i / BodySamples);
                 Vector3 onAxis = ClosestPointOnSegment(p, a, b);
                 float depth = radius - Vector3.Distance(p, onAxis);
                 if (depth > deepest)
@@ -321,15 +328,15 @@ public class LacrosseStickGrip : MonoBehaviour
             if (deepest <= 0f)
                 break;
 
-            // Push that point straight out to the capsule surface and re-aim the shaft through it.
             Vector3 away = deepestPoint - deepestAxisPoint;
-            if (away.sqrMagnitude < 0.000001f)
-                away = Vector3.Cross(b - a, shaftDir);
-            if (away.sqrMagnitude < 0.000001f)
+            Vector3 sideways = Vector3.ProjectOnPlane(away, shaftDir);
+            if (sideways.sqrMagnitude < 0.000001f)
+                sideways = Vector3.ProjectOnPlane(Vector3.Cross(b - a, shaftDir), shaftDir);
+            if (sideways.sqrMagnitude < 0.000001f)
                 break;
 
-            Vector3 pushed = deepestAxisPoint + away.normalized * (radius + 0.005f);
-            shaftDir = (pushed - pivot).normalized;
+            shaftDir = Vector3.RotateTowards(shaftDir, sideways.normalized,
+                                             BodyStepDegrees * Mathf.Deg2Rad, 0f).normalized;
         }
 
         return shaftDir;
