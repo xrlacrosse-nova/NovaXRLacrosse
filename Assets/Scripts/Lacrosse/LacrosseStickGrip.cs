@@ -110,7 +110,16 @@ public class LacrosseStickGrip : MonoBehaviour
     public float stickLength = 53.6f;
 
     private const int BodySamples = 20;
-    private const int BodyMaxSteps = 25;
+    private const int BodyMaxSteps = 20;
+    private const float BodyCorrectionSharpness = 20f;
+
+    [Tooltip("Pole samples closer than this to the right palm (meters) are ignored by the body " +
+             "clamp, since swinging around the palm can't move them.")]
+    [Min(0f)]
+    public float minSwingDistance = 0.3f;
+
+    // Smoothed body-avoidance swing, so the clamp eases in and out instead of snapping.
+    private Quaternion _bodyCorrection = Quaternion.identity;
     private const float BodyStepDegrees = 3f;
 
     // Last good pocket direction, used when the roll reference lines up with the shaft.
@@ -173,7 +182,10 @@ public class LacrosseStickGrip : MonoBehaviour
         if (handSpan < 0.001f)
             return false;
         shaftDir /= handSpan;
-        shaftDir = AvoidBody(bottomPalm, shaftDir, handSpan);
+        Quaternion target = Quaternion.FromToRotation(shaftDir, AvoidBody(bottomPalm, shaftDir, handSpan));
+        _bodyCorrection = Quaternion.Slerp(_bodyCorrection, target,
+                                           1f - Mathf.Exp(-BodyCorrectionSharpness * Time.deltaTime));
+        shaftDir = _bodyCorrection * shaftDir;
 
         // Which way the pocket should face, flattened onto the plane around the shaft.
         Vector3 pocketDir = Vector3.ProjectOnPlane(RollReferenceDirection(), shaftDir);
@@ -314,7 +326,12 @@ public class LacrosseStickGrip : MonoBehaviour
             Vector3 deepestAxisPoint = Vector3.zero;
             for (int i = 0; i <= BodySamples; i++)
             {
-                Vector3 p = pivot + shaftDir * Mathf.Lerp(-buttLength, length, (float)i / BodySamples);
+                float along = Mathf.Lerp(-buttLength, length, (float)i / BodySamples);
+                // Points this close to the right palm barely move when the shaft swings around
+                // it, so chasing them only makes the stick thrash.
+                if (Mathf.Abs(along) < minSwingDistance)
+                    continue;
+                Vector3 p = pivot + shaftDir * along;
                 Vector3 onAxis = ClosestPointOnSegment(p, a, b);
                 float depth = radius - Vector3.Distance(p, onAxis);
                 if (depth > deepest)
