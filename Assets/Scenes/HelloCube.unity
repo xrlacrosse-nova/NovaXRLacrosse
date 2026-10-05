@@ -1337,7 +1337,7 @@ PrefabInstance:
     - target: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,
         type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.294
+      value: 0.764
       objectReference: {fileID: 0}
     - target: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,
         type: 3}
@@ -1597,7 +1597,8 @@ PrefabInstance:
       value: LacrossGoalBlender
       objectReference: {fileID: 0}
     m_RemovedComponents: []
-    m_RemovedGameObjects: []
+    m_RemovedGameObjects:
+    - {fileID: 65702495048144492, guid: a9f46782e94e3cd4597841a3e8d32a85, type: 3}
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: a9f46782e94e3cd4597841a3e8d32a85, type: 3}
