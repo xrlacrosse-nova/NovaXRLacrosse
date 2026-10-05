@@ -1178,8 +1178,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f29cfdfaf0f457e49a77fe15a34a5e19, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoalDetector
-  goalGateCenter: {x: -0.75, y: 0.98, z: 0.75}
-  goalGateHalfSize: {x: 0.9144, y: 0.98}
+  goalGateCenter: {x: -0.67, y: 0.98, z: 0.75}
+  goalGateHalfSize: {x: 0.9144, y: 0.9144}
   showOnScreenGoal: 1
   goalText: {fileID: 63618238}
 --- !u!114 &866954162
