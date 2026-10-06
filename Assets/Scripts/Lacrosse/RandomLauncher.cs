@@ -127,6 +127,12 @@ public class RandomLauncher : MonoBehaviour
 
     // shot waiting on the shooter animation's release frame
     private bool _awaitingRelease = false;
+    private Coroutine _releaseWatchdog;
+
+    [Tooltip("If the shooter animation hasn't released within this many seconds, launch the shot " +
+             "anyway so a session can't hang.")]
+    [Min(0.5f)]
+    public float releaseWatchdogSeconds = 5f;
     private Quadrant _pendingQuadrant;
 
     // pre-start countdown display state
@@ -347,7 +353,24 @@ public class RandomLauncher : MonoBehaviour
         // (HandleShooterRelease), so the ball leaves the stick when the avatar shoots.
         _pendingQuadrant = PickRandomQuadrant();
         _awaitingRelease = true;
+        if (_releaseWatchdog != null) StopCoroutine(_releaseWatchdog);
+        _releaseWatchdog = StartCoroutine(ReleaseWatchdog());
         shooterAnimation.PlayShot();
+    }
+
+    /// <summary>Launches the pending shot anyway if the shooter's release never arrives
+    /// (animation disabled or stalled), so a session can never hang waiting on it.</summary>
+    private IEnumerator ReleaseWatchdog()
+    {
+        yield return new WaitForSeconds(releaseWatchdogSeconds);
+        _releaseWatchdog = null;
+
+        if (!_awaitingRelease) yield break;
+
+        Debug.LogWarning($"[RandomLauncher] Shooter release didn't arrive within {releaseWatchdogSeconds}s " +
+                         "— launching anyway.");
+        _awaitingRelease = false;
+        LaunchToward(_pendingQuadrant);
     }
 
     /// <summary>Called by ShooterAnimationController on the shooting clip's release frame.
@@ -357,6 +380,11 @@ public class RandomLauncher : MonoBehaviour
         if (!_awaitingRelease) return;
 
         _awaitingRelease = false;
+        if (_releaseWatchdog != null)
+        {
+            StopCoroutine(_releaseWatchdog);
+            _releaseWatchdog = null;
+        }
         LaunchToward(_pendingQuadrant);
     }
 
@@ -382,10 +410,12 @@ public class RandomLauncher : MonoBehaviour
         Vector3 origin = launchOrigin != null ? launchOrigin.position : transform.position;
 
         // ── 2. Reset the ball position & physics ─────────────────
+        // Always un-hide the ball (it's hidden until shot), even if autoResetOnLaunch is off.
+        _floorBoundary?.CancelDespawn();
+
         if (autoResetOnLaunch)
         {
             _goalDetector.ResetState();
-            _floorBoundary?.CancelDespawn();
 
             _rb.isKinematic = false;
             _rb.useGravity = false;
