@@ -183,6 +183,32 @@ public class FloorBoundary : MonoBehaviour
     }
 
     /// <summary>
+    /// Hides the object and disables its physics right now, WITHOUT raising
+    /// <see cref="OnDespawned"/>. Cancels any pending despawn too, so that doesn't raise it
+    /// later either. Used to keep the ball out of sight before a session's first shot;
+    /// <see cref="CancelDespawn"/> shows it again when it's launched.
+    /// </summary>
+    public void Hide()
+    {
+        if (_despawnRoutine != null)
+        {
+            StopCoroutine(_despawnRoutine);
+            _despawnRoutine = null;
+        }
+
+        // Zero the velocity BEFORE going kinematic — setting velocity on a kinematic body warns.
+        if (_hasRigidbody && !_rb.isKinematic)
+        {
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+            _rb.isKinematic = true;
+        }
+
+        if (_renderer != null) _renderer.enabled = false;
+        if (_collider != null) _collider.enabled = false;
+    }
+
+    /// <summary>
     /// Draws a visual floor indicator in the Scene view for easy debugging.
     /// </summary>
     private void OnDrawGizmosSelected()

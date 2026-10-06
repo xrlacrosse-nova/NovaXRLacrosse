@@ -1,111 +1,527 @@
 using UnityEngine;
 
 /// <summary>
-/// Two-handed lacrosse stick grip.
+/// Two-handed lacrosse stick grip for the shooter avatar.
 ///
-/// Put this on the stick GameObject itself (not the avatar). On Start, the
-/// stick is parented to the right hand bone and given a fixed local offset.
-/// Every LateUpdate (after the Animator has posed the skeleton for this
-/// frame), the stick is rotated about the right-hand pivot so a point
-/// partway down its shaft points at the left hand bone - producing the look
-/// of a two-handed grip without an IK rig.
+/// Put this on the stick GameObject itself (not the avatar). Every LateUpdate (after the
+/// Animator has posed the skeleton for this frame) the stick's whole world pose is solved
+/// from the two hands:
+///   - the Bottom Grip Point on the shaft is pinned to the right (butt-end) palm,
+///   - the shaft is aimed through the left (top) palm,
+///   - the roll around the shaft is taken from a reference axis, so the pocket faces a
+///     stable direction instead of spinning with whatever rotation the math happened to find.
+///
+/// The stick is NOT reparented. Its pose is written in world space, so the OBJ's pivot, the
+/// stick's scale, and any scale on the avatar's bone hierarchy don't matter. The grip point is
+/// given in the stick's own local (mesh) space instead, which is what fixes the old
+/// "swings around the wrong pivot" problem without a wrapper GameObject.
+///
+/// Defaults match 11747_stick_v2_L2.obj: the shaft runs along local +Z from the butt (z = 0)
+/// to the head (z = 55.6), with its centerline at y = -1.818.
 ///
 /// SETUP (in the Unity Editor):
-/// 1. Select the stick GameObject in the Hierarchy.
-/// 2. Add Component -> LacrosseStickGrip.
-/// 3. Drag the avatar's right hand bone Transform into "Right Hand Bone".
-/// 4. Drag the avatar's left hand bone Transform into "Left Hand Bone".
-/// 5. Enter Play mode and tune Right Hand Offset / Rotation, Shaft Axis, and
-///    Grip Point until the stick sits naturally between both hands.
+/// 1. Select the stick GameObject. Add Component -> LacrosseStickGrip.
+/// 2. Drag the avatar's right hand bone into "Right Hand Bone" (butt-end hand) and the left
+///    hand bone into "Left Hand Bone" (top hand). For a lefty shooter that's the right way round.
+/// 3. With the stick selected, check the gizmos: the yellow line should run down the middle of
+///    the shaft, and the green sphere should sit near the butt end.
+/// 4. Enter Play mode and pause. Move/rotate the stick in the Scene view until it sits in both
+///    hands, and rotate the left hand bone until it wraps the shaft. Then right-click this
+///    component -> Capture Grip From Current Pose. That fills in the palm offsets, Roll Offset,
+///    and the left hand's grip rotation (and turns on Align Left Hand).
 /// </summary>
 public class LacrosseStickGrip : MonoBehaviour
 {
     [Header("Hand Bones (drag from the avatar's skeleton)")]
-    [Tooltip("The bone the stick is parented to and pivots around.")]
+    [Tooltip("Hand at the butt end of the shaft. The stick is pinned to this hand.")]
     public Transform rightHandBone;
 
-    [Tooltip("The bone the shaft is aimed toward.")]
+    [Tooltip("Hand further up the shaft. The shaft is aimed through this hand.")]
     public Transform leftHandBone;
 
-    [Header("Right Hand Attachment")]
-    [Tooltip("Local position offset from the right hand bone. Tune in Play mode.")]
-    public Vector3 rightHandPositionOffset = Vector3.zero;
+    [Header("Palm Offsets (meters, in each hand bone's rotation)")]
+    [Tooltip("Offset from the right hand bone (the wrist joint) to the center of the palm. " +
+             "Mixamo hand bones point +Y toward the fingers.")]
+    public Vector3 rightPalmOffset = new Vector3(0f, 0.08f, 0f);
 
-    [Tooltip("Local rotation offset from the right hand bone (Euler angles). Tune in Play mode.")]
-    public Vector3 rightHandRotationOffset = Vector3.zero;
+    [Tooltip("Offset from the left hand bone (the wrist joint) to the center of the palm.")]
+    public Vector3 leftPalmOffset = new Vector3(0f, 0.08f, 0f);
 
-    [Header("Left Hand Aim")]
-    [Tooltip("Local axis (in the stick's own local space) that points from the right-hand end down the shaft toward the head.")]
-    public Vector3 shaftAxis = Vector3.up;
+    [Header("Stick Geometry (stick's local / mesh space)")]
+    [Tooltip("Local axis that runs down the shaft from the butt end toward the head.")]
+    public Vector3 shaftAxisLocal = Vector3.forward;
 
-    [Tooltip("Distance along the shaft, from the right-hand end, where the left hand grips.")]
-    public float leftHandGripDistance = 0.4f;
+    [Tooltip("Point on the shaft that sits in the right palm, in the stick's local (mesh) units.")]
+    public Vector3 bottomGripPoint = new Vector3(0f, -1.818f, 2f);
+
+    [Tooltip("Local axis, perpendicular to the shaft, that the pocket opens toward. For the OBJ " +
+             "this is -Y; +Y is the closed back of the head.")]
+    public Vector3 pocketAxisLocal = Vector3.down;
+
+    [Header("Roll Around the Shaft")]
+    [Tooltip("The pocket faces along Roll Reference Axis of this Transform. Leave empty to use " +
+             "world space (steady, ignores wrist twist). Drag a hand bone in to have the pocket " +
+             "follow that wrist's roll through the shot.")]
+    public Transform rollReference;
+
+    [Tooltip("Axis (in Roll Reference's local space, or world space if it's empty) the pocket faces.")]
+    public Vector3 rollReferenceAxis = Vector3.up;
+
+    [Tooltip("Extra spin around the shaft, in degrees, applied after the roll reference.")]
+    [Range(-180f, 180f)]
+    public float rollOffset = 0f;
+
+    [Header("Left Hand Rotation Fix")]
+    [Tooltip("Override the animation's left hand rotation so the hand wraps the shaft. The hand " +
+             "is held at Left Hand Grip Rotation relative to the stick. Turned on by Capture Grip.")]
+    public bool alignLeftHand = false;
+
+    [Tooltip("Left hand rotation relative to the stick (Euler degrees). Set by Capture Grip.")]
+    public Vector3 leftHandGripRotation = Vector3.zero;
+
+    [Tooltip("1 = hand fully follows the grip rotation, 0 = the animation's rotation.")]
+    [Range(0f, 1f)]
+    public float leftHandAlignWeight = 1f;
+
+    [Header("Left Arm Reach")]
+    [Tooltip("Bends the left arm (the hand bone's parent and grandparent: forearm and upper arm) " +
+             "so the left palm stays on the shaft when the body clamp pushes the stick away from " +
+             "the animated hand. 0 = off. Does nothing on frames where the hand is already on the shaft.")]
+    [Range(0f, 1f)]
+    public float leftArmReachWeight = 1f;
+
+    [Tooltip("Extra gap in meters between the left elbow and the torso capsule (arm thickness). " +
+             "Uses the Body Bottom/Top Bone and Body Radius from Body Collision below.")]
+    [Min(0f)]
+    public float armClearance = 0.04f;
 
     [Header("Body Clamp (optional)")]
-    [Tooltip("If assigned, the left hand aim target is kept at least Min Distance From Spine away from this bone, so the shaft can't rotate through the torso.")]
+    [Tooltip("If assigned, the left palm target is kept at least Min Distance From Spine away " +
+             "from this bone, so the shaft can't rotate through the torso.")]
     public Transform spineBone;
     public float minDistanceFromSpine = 0.15f;
 
+    [Header("Body Collision (optional)")]
+    [Tooltip("Bottom of the torso capsule, e.g. the Hips bone. The part of the stick past the " +
+             "left hand is swung around the right hand so it stays outside this capsule.")]
+    public Transform bodyBottomBone;
+
+    [Tooltip("Top of the torso capsule, e.g. the Neck bone.")]
+    public Transform bodyTopBone;
+
+    [Tooltip("Torso capsule radius in meters.")]
+    [Min(0f)]
+    public float bodyRadius = 0.15f;
+
+    [Tooltip("Extra gap in meters kept between the stick and the torso, for the shaft and head thickness.")]
+    [Min(0f)]
+    public float stickClearance = 0.04f;
+
+    [Tooltip("Stick length from Bottom Grip Point to the tip of the head, in the stick's local " +
+             "(mesh) units. The OBJ's head tip is at z = 55.6.")]
+    public float stickLength = 53.6f;
+
+    private const int BodySamples = 20;
+    private const int BodyMaxSteps = 20;
+    private const float BodyCorrectionSharpness = 20f;
+
+    [Tooltip("Pole samples closer than this to the right palm (meters) are ignored by the body " +
+             "clamp, since swinging around the palm can't move them.")]
+    [Min(0f)]
+    public float minSwingDistance = 0.3f;
+
+    // Smoothed body-avoidance swing, so the clamp eases in and out instead of snapping.
+    private Quaternion _bodyCorrection = Quaternion.identity;
+    private const float BodyStepDegrees = 3f;
+
+    // Last good pocket direction, used when the roll reference lines up with the shaft.
+    private Vector3 _lastPocketDir = Vector3.up;
+
     void Start()
     {
-        if (rightHandBone == null)
+        if (rightHandBone == null || leftHandBone == null)
         {
-            Debug.LogError("[LacrosseStickGrip] Right Hand Bone is not assigned.", this);
+            Debug.LogError("[LacrosseStickGrip] Right Hand Bone and Left Hand Bone must both be assigned.", this);
             enabled = false;
             return;
         }
 
-        transform.SetParent(rightHandBone, worldPositionStays: false);
+        if (shaftAxisLocal.sqrMagnitude < 0.0001f)
+        {
+            Debug.LogError("[LacrosseStickGrip] Shaft Axis Local can't be zero.", this);
+            enabled = false;
+        }
     }
 
     void LateUpdate()
     {
-        // Re-anchor to the offset every frame (instead of only in Start) so the
-        // shaft's roll never drifts and the offset fields stay live-tunable.
-        transform.localPosition = rightHandPositionOffset;
-        transform.localRotation = Quaternion.Euler(rightHandRotationOffset);
+        Vector3 bottomPalm = PalmPosition(rightHandBone, rightPalmOffset);
+        Quaternion leftHandRotation = leftHandBone.rotation;
 
-        if (leftHandBone == null || shaftAxis.sqrMagnitude < 0.0001f)
+        // With the left hand fix on, the left palm depends on the hand's rotation, which depends
+        // on the stick's rotation. Solve twice: first with the animated hand, then with the
+        // gripping hand. The palm is only a few cm from the wrist, so two passes are enough.
+        int passes = alignLeftHand ? 2 : 1;
+        for (int i = 0; i < passes; i++)
+        {
+            Vector3 topPalm = ClampFromSpine(leftHandBone.position + leftHandRotation * leftPalmOffset);
+            if (!TrySolveRotation(bottomPalm, topPalm, out Quaternion stickRotation))
+                return;
+            transform.rotation = stickRotation;
+
+            if (alignLeftHand)
+                leftHandRotation = Quaternion.Slerp(leftHandBone.rotation,
+                                                    stickRotation * Quaternion.Euler(leftHandGripRotation),
+                                                    leftHandAlignWeight);
+        }
+
+        // Slide the stick so its bottom grip point lands in the right palm.
+        transform.position += bottomPalm - transform.TransformPoint(bottomGripPoint);
+
+        // The Animator rewrites the bones every frame, so none of this accumulates.
+        if (leftArmReachWeight > 0f)
+            ReachLeftHandToShaft(leftHandRotation);
+
+        if (alignLeftHand)
+            leftHandBone.rotation = leftHandRotation;
+    }
+
+    // Two-bone reach: keeps the shoulder fixed and bends the upper arm and forearm so the left
+    // palm lands on the nearest point of the (already posed) shaft. The elbow keeps the side it
+    // already bends toward. If the target is out of reach, the arm stretches straight toward it.
+    private void ReachLeftHandToShaft(Quaternion handRotation)
+    {
+        Transform forearm = leftHandBone.parent;
+        Transform upperArm = forearm != null ? forearm.parent : null;
+        if (forearm == null || upperArm == null)
             return;
 
-        Vector3 aimTarget = leftHandBone.position;
+        Vector3 palmOffsetWorld = handRotation * leftPalmOffset;
+        Vector3 gripWorld = transform.TransformPoint(bottomGripPoint);
+        Vector3 shaftDir = transform.TransformDirection(shaftAxisLocal).normalized;
+        Vector3 palm = leftHandBone.position + palmOffsetWorld;
 
-        if (spineBone != null)
+        Vector3 shoulder = upperArm.position;
+        Vector3 elbow = forearm.position;
+        Vector3 wrist = leftHandBone.position;
+        float upperLength = Vector3.Distance(shoulder, elbow);
+        float lowerLength = Vector3.Distance(elbow, wrist);
+
+        // Spot on the shaft (distance t along it from the grip point) nearest the animated palm.
+        // If the arm can't reach it, slide along the shaft to the nearest spot it can reach:
+        // wrist(t) = grip + dir*t - palmOffset must be within the arm's length of the shoulder.
+        float t = Vector3.Dot(palm - gripWorld, shaftDir);
+        float maxReach = (upperLength + lowerLength) * 0.97f;
+        Vector3 q = gripWorld - palmOffsetWorld - shoulder;
+        float qAlong = Vector3.Dot(q, shaftDir);
+        float discriminant = qAlong * qAlong - (q.sqrMagnitude - maxReach * maxReach);
+        float closestToShoulder = -qAlong;
+        if (discriminant >= 0f)
         {
-            Vector3 fromSpine = aimTarget - spineBone.position;
-            float distance = fromSpine.magnitude;
-            if (distance < minDistanceFromSpine)
+            float halfRange = Mathf.Sqrt(discriminant);
+            t = Mathf.Clamp(t, closestToShoulder - halfRange, closestToShoulder + halfRange);
+        }
+        else
+        {
+            t = closestToShoulder;
+        }
+        Vector3 palmOnShaft = gripWorld + shaftDir * t;
+
+        Vector3 wristTarget = Vector3.Lerp(wrist, palmOnShaft - palmOffsetWorld, leftArmReachWeight);
+        if ((wristTarget - wrist).sqrMagnitude < 0.000001f)
+            return;
+
+        Vector3 toTarget = wristTarget - shoulder;
+        float distance = Mathf.Clamp(toTarget.magnitude,
+                                     Mathf.Abs(upperLength - lowerLength) + 0.001f,
+                                     upperLength + lowerLength - 0.001f);
+        Vector3 reachDir = toTarget.normalized;
+
+        // Law of cosines: elbow sits `along` the reach line and `height` off it, on the same
+        // side the animation already had it.
+        float along = (upperLength * upperLength - lowerLength * lowerLength + distance * distance) / (2f * distance);
+        float height = Mathf.Sqrt(Mathf.Max(0f, upperLength * upperLength - along * along));
+        Vector3 pole = Vector3.ProjectOnPlane(elbow - shoulder, reachDir);
+        if (pole.sqrMagnitude < 0.000001f)
+            pole = Vector3.ProjectOnPlane(-transform.TransformDirection(pocketAxisLocal), reachDir);
+        Vector3 newElbow = shoulder + reachDir * along + pole.normalized * height;
+
+        // Keep the elbow out of the torso too. Pushing it out changes its distance from the
+        // shoulder, so snap it back to the upper arm's length each time.
+        if (bodyBottomBone != null && bodyTopBone != null && upperLength > 0.0001f)
+        {
+            for (int i = 0; i < 2; i++)
             {
-                Vector3 direction = distance > 0.0001f ? fromSpine / distance : transform.right;
-                aimTarget = spineBone.position + direction * minDistanceFromSpine;
+                newElbow = PushOutOfBody(newElbow, bodyRadius + armClearance);
+                Vector3 fromShoulder = newElbow - shoulder;
+                if (fromShoulder.sqrMagnitude < 0.000001f)
+                    break;
+                newElbow = shoulder + fromShoulder.normalized * upperLength;
             }
         }
 
-        Vector3 gripPointWorld = transform.TransformPoint(shaftAxis.normalized * leftHandGripDistance);
-        Vector3 pivot = transform.position;
+        upperArm.rotation = Quaternion.FromToRotation(elbow - shoulder, newElbow - shoulder) * upperArm.rotation;
+        // The forearm moved with the upper arm, so aim it from its new position.
+        forearm.rotation = Quaternion.FromToRotation(leftHandBone.position - forearm.position,
+                                                     shoulder + reachDir * distance - forearm.position)
+                         * forearm.rotation;
+    }
 
-        Vector3 currentDir = (gripPointWorld - pivot).normalized;
-        Vector3 desiredDir = (aimTarget - pivot).normalized;
+    // Stick rotation that runs the shaft from bottomPalm through topPalm, with the pocket
+    // facing the roll reference.
+    private bool TrySolveRotation(Vector3 bottomPalm, Vector3 topPalm, out Quaternion rotation)
+    {
+        rotation = transform.rotation;
 
-        if (currentDir.sqrMagnitude > 0.0001f && desiredDir.sqrMagnitude > 0.0001f)
+        Vector3 shaftDir = topPalm - bottomPalm;
+        float handSpan = shaftDir.magnitude;
+        if (handSpan < 0.001f)
+            return false;
+        shaftDir /= handSpan;
+        Quaternion target = Quaternion.FromToRotation(shaftDir, AvoidBody(bottomPalm, shaftDir, handSpan));
+        _bodyCorrection = Quaternion.Slerp(_bodyCorrection, target,
+                                           1f - Mathf.Exp(-BodyCorrectionSharpness * Time.deltaTime));
+        shaftDir = _bodyCorrection * shaftDir;
+
+        // Which way the pocket should face, flattened onto the plane around the shaft.
+        Vector3 pocketDir = Vector3.ProjectOnPlane(RollReferenceDirection(), shaftDir);
+        if (pocketDir.sqrMagnitude < 0.0001f)
+            pocketDir = Vector3.ProjectOnPlane(_lastPocketDir, shaftDir);
+        if (pocketDir.sqrMagnitude < 0.0001f)
+            return false;
+        pocketDir.Normalize();
+        _lastPocketDir = pocketDir;
+
+        // Map the stick's local (shaft, pocket) frame onto the world (shaft, pocket) frame.
+        Quaternion worldFrame = Quaternion.LookRotation(shaftDir, pocketDir)
+                              * Quaternion.AngleAxis(rollOffset, Vector3.forward);
+        rotation = worldFrame * Quaternion.Inverse(LocalFrame());
+        return true;
+    }
+
+    // ── Tuning ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Works out the palm offsets and roll from wherever the stick is right now. In Play mode:
+    /// pause, move/rotate the stick in the Scene view until it sits in both hands with the
+    /// pocket facing the right way, then run this from the component's context menu.
+    /// Play-mode values are lost on exit, so use Copy Component / Paste Component Values after.
+    /// </summary>
+    [ContextMenu("Capture Grip From Current Pose")]
+    void CaptureGripFromCurrentPose()
+    {
+        if (rightHandBone == null || leftHandBone == null)
         {
-            Quaternion delta = Quaternion.FromToRotation(currentDir, desiredDir);
-            transform.rotation = delta * transform.rotation;
+            Debug.LogWarning("[LacrosseStickGrip] Assign both hand bones before capturing.", this);
+            return;
         }
+
+        // Right palm = the stick's bottom grip point, wherever it is now.
+        Vector3 grip = transform.TransformPoint(bottomGripPoint);
+        Vector3 shaftDir = transform.TransformDirection(shaftAxisLocal).normalized;
+        rightPalmOffset = Quaternion.Inverse(rightHandBone.rotation) * (grip - rightHandBone.position);
+
+        // Left palm = the point on the shaft closest to the left hand bone.
+        Vector3 onShaft = grip + Vector3.Project(leftHandBone.position - grip, shaftDir);
+        leftPalmOffset = Quaternion.Inverse(leftHandBone.rotation) * (onShaft - leftHandBone.position);
+
+        // Roll = angle from the reference direction to where the pocket faces now.
+        Vector3 pocketNow = Vector3.ProjectOnPlane(transform.TransformDirection(pocketAxisLocal), shaftDir);
+        Vector3 pocketRef = Vector3.ProjectOnPlane(RollReferenceDirection(), shaftDir);
+        if (pocketNow.sqrMagnitude > 0.0001f && pocketRef.sqrMagnitude > 0.0001f)
+            rollOffset = Vector3.SignedAngle(pocketRef, pocketNow, shaftDir);
+
+        // Left hand rotation relative to the stick, so the hand keeps this grip through the shot.
+        leftHandGripRotation = (Quaternion.Inverse(transform.rotation) * leftHandBone.rotation).eulerAngles;
+        alignLeftHand = true;
+
+        Debug.Log($"[LacrosseStickGrip] Captured: Right Palm Offset {rightPalmOffset:F3}, " +
+                  $"Left Palm Offset {leftPalmOffset:F3}, Roll Offset {rollOffset:F1}, " +
+                  $"Left Hand Grip Rotation {leftHandGripRotation:F1} (Align Left Hand on). " +
+                  "Copy Component now, then Paste Component Values after leaving Play mode.", this);
+    }
+
+    /// <summary>
+    /// Turns on Align Left Hand, starting from the hand's current (animated) rotation, without
+    /// touching anything else. Then drag Left Hand Grip Rotation's X/Y/Z in the Inspector to turn
+    /// the hand live. Works while Play mode is running, since this script overrides the Animator.
+    /// </summary>
+    [ContextMenu("Start Left Hand Fix From Current Pose")]
+    void StartLeftHandFixFromCurrentPose()
+    {
+        if (leftHandBone == null)
+        {
+            Debug.LogWarning("[LacrosseStickGrip] Assign Left Hand Bone first.", this);
+            return;
+        }
+
+        leftHandGripRotation = (Quaternion.Inverse(transform.rotation) * leftHandBone.rotation).eulerAngles;
+        leftHandAlignWeight = 1f;
+        alignLeftHand = true;
+
+        Debug.Log($"[LacrosseStickGrip] Left hand fix on, starting at {leftHandGripRotation:F1}. " +
+                  "Drag Left Hand Grip Rotation X/Y/Z to turn the hand.", this);
+    }
+
+    // ── Private helpers ───────────────────────────────────────────
+
+    private Vector3 RollReferenceDirection()
+    {
+        return rollReference != null
+            ? rollReference.TransformDirection(rollReferenceAxis)
+            : rollReferenceAxis;
+    }
+
+    // Rotation only, not TransformPoint, so the offset stays in meters even if the rig's
+    // bones carry an import scale.
+    private static Vector3 PalmPosition(Transform bone, Vector3 offset)
+    {
+        return bone.position + bone.rotation * offset;
+    }
+
+    private Vector3 ClampFromSpine(Vector3 target)
+    {
+        if (spineBone == null)
+            return target;
+
+        Vector3 fromSpine = target - spineBone.position;
+        float distance = fromSpine.magnitude;
+        if (distance >= minDistanceFromSpine)
+            return target;
+
+        Vector3 direction = distance > 0.0001f ? fromSpine / distance : spineBone.right;
+        return spineBone.position + direction * minDistanceFromSpine;
+    }
+
+    // Swings the shaft around the right palm until the whole pole (butt end to head tip) is
+    // outside the torso capsule. Parts near the right palm barely move when swinging around it,
+    // so if the animation itself puts the hands inside the body, the step cap stops the swing.
+    private Vector3 AvoidBody(Vector3 pivot, Vector3 shaftDir, float handSpan)
+    {
+        if (bodyBottomBone == null || bodyTopBone == null)
+            return shaftDir;
+
+        Vector3 a = bodyBottomBone.position;
+        Vector3 b = bodyTopBone.position;
+        float radius = bodyRadius + stickClearance;
+        float length = transform.TransformVector(shaftAxisLocal.normalized * stickLength).magnitude;
+        // Distance from the right palm back to the butt end, so the whole pole is checked.
+        float buttLength = transform.TransformVector(
+            shaftAxisLocal.normalized * Mathf.Max(0f, Vector3.Dot(bottomGripPoint, shaftAxisLocal.normalized))).magnitude;
+        if (length <= handSpan)
+            return shaftDir;
+
+        // Rotate in small steps toward the direction that moves the deepest point out of the
+        // capsule, until the whole overhang is clear. Small steps always converge (unlike
+        // re-aiming through one point, which changes that point's distance from the pivot and
+        // can push another sample back in).
+        for (int iteration = 0; iteration < BodyMaxSteps; iteration++)
+        {
+            float deepest = 0f;
+            Vector3 deepestPoint = Vector3.zero;
+            Vector3 deepestAxisPoint = Vector3.zero;
+            for (int i = 0; i <= BodySamples; i++)
+            {
+                float along = Mathf.Lerp(-buttLength, length, (float)i / BodySamples);
+                // Points this close to the right palm barely move when the shaft swings around
+                // it, so chasing them only makes the stick thrash.
+                if (Mathf.Abs(along) < minSwingDistance)
+                    continue;
+                Vector3 p = pivot + shaftDir * along;
+                Vector3 onAxis = ClosestPointOnSegment(p, a, b);
+                float depth = radius - Vector3.Distance(p, onAxis);
+                if (depth > deepest)
+                {
+                    deepest = depth;
+                    deepestPoint = p;
+                    deepestAxisPoint = onAxis;
+                }
+            }
+
+            if (deepest <= 0f)
+                break;
+
+            Vector3 away = deepestPoint - deepestAxisPoint;
+            Vector3 sideways = Vector3.ProjectOnPlane(away, shaftDir);
+            if (sideways.sqrMagnitude < 0.000001f)
+                sideways = Vector3.ProjectOnPlane(Vector3.Cross(b - a, shaftDir), shaftDir);
+            if (sideways.sqrMagnitude < 0.000001f)
+                break;
+
+            shaftDir = Vector3.RotateTowards(shaftDir, sideways.normalized,
+                                             BodyStepDegrees * Mathf.Deg2Rad, 0f).normalized;
+        }
+
+        return shaftDir;
+    }
+
+    private Vector3 PushOutOfBody(Vector3 point, float radius)
+    {
+        Vector3 a = bodyBottomBone.position;
+        Vector3 b = bodyTopBone.position;
+        Vector3 onAxis = ClosestPointOnSegment(point, a, b);
+        Vector3 away = point - onAxis;
+        if (away.magnitude >= radius)
+            return point;
+        if (away.sqrMagnitude < 0.000001f)
+            away = Vector3.Cross(b - a, transform.right);
+        return onAxis + away.normalized * radius;
+    }
+
+    private static Vector3 ClosestPointOnSegment(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float lengthSq = ab.sqrMagnitude;
+        if (lengthSq < 0.000001f)
+            return a;
+        return a + ab * Mathf.Clamp01(Vector3.Dot(p - a, ab) / lengthSq);
+    }
+
+    private Quaternion LocalFrame()
+    {
+        Vector3 pocket = Vector3.ProjectOnPlane(pocketAxisLocal, shaftAxisLocal);
+        if (pocket.sqrMagnitude < 0.0001f)
+            pocket = Vector3.ProjectOnPlane(Vector3.up, shaftAxisLocal);
+        if (pocket.sqrMagnitude < 0.0001f)
+            pocket = Vector3.ProjectOnPlane(Vector3.right, shaftAxisLocal);
+        return Quaternion.LookRotation(shaftAxisLocal, pocket);
     }
 
 #if UNITY_EDITOR
     void OnDrawGizmosSelected()
     {
-        Vector3 gripPointWorld = transform.TransformPoint(shaftAxis.normalized * leftHandGripDistance);
+        // Shaft centerline and grip point on the stick, drawn from local space. If these don't
+        // line up with the mesh in the Scene view, Shaft Axis / Bottom Grip Point are wrong.
+        Vector3 grip = transform.TransformPoint(bottomGripPoint);
+        Vector3 shaftEnd = transform.TransformPoint(bottomGripPoint + shaftAxisLocal.normalized * stickLength);
+
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawLine(grip, shaftEnd);
 
         Gizmos.color = Color.green;
-        Gizmos.DrawWireSphere(gripPointWorld, 0.02f);
+        Gizmos.DrawWireSphere(grip, 0.025f);
 
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawRay(grip, transform.TransformDirection(pocketAxisLocal).normalized * 0.15f);
+
+        // Where the script thinks each palm is.
+        Gizmos.color = Color.cyan;
+        if (rightHandBone != null)
+            Gizmos.DrawWireSphere(PalmPosition(rightHandBone, rightPalmOffset), 0.02f);
         if (leftHandBone != null)
+            Gizmos.DrawWireSphere(PalmPosition(leftHandBone, leftPalmOffset), 0.02f);
+
+        // Torso capsule the stick is kept out of (inner = body, outer = body + clearance).
+        if (bodyBottomBone != null && bodyTopBone != null)
         {
-            Gizmos.color = Color.magenta;
-            Gizmos.DrawLine(transform.position, leftHandBone.position);
+            Vector3 a = bodyBottomBone.position;
+            Vector3 b = bodyTopBone.position;
+            Gizmos.color = Color.red;
+            Gizmos.DrawWireSphere(a, bodyRadius);
+            Gizmos.DrawWireSphere(b, bodyRadius);
+            Gizmos.DrawLine(a, b);
+            Gizmos.color = new Color(1f, 0.5f, 0f);
+            Gizmos.DrawWireSphere(Vector3.Lerp(a, b, 0.5f), bodyRadius + stickClearance);
         }
     }
 #endif
