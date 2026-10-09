@@ -901,8 +901,8 @@ MonoBehaviour:
   ambientVolume: 1
   fadeInTime: 1.5
   fadeOutTime: 2.5
-  saveCheer: {fileID: 0}
-  goalGroan: {fileID: 0}
+  saveCheer: {fileID: 8300000, guid: 3c4fe9e007f65dc418913d9c1bdf9e91, type: 3}
+  goalGroan: {fileID: 8300000, guid: e25e6ea73489d0b40b84bb7a62e69f41, type: 3}
   saveCheerVolume: 0.8
   goalGroanVolume: 0.8
   standsPoint: {fileID: 0}
@@ -1388,6 +1388,7 @@ MonoBehaviour:
   maxShotInterval: 5
   shooterAnimation: {fileID: 229782168}
   countdownText: {fileID: 1065477489}
+  releaseWatchdogSeconds: 5
 --- !u!114 &866954163
 MonoBehaviour:
   m_ObjectHideFlags: 0
