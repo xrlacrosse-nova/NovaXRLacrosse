@@ -1,199 +1,132 @@
-using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// Crowd audio for a training session:
-///   - Ambient bed: a looping crowd murmur that fades in when a session starts
-///     (RandomLauncher.OnSessionStarted) and fades out when it ends (OnSessionEnded).
-///   - Reaction stingers: a cheer when the goalie saves a shot (GoalDetector.OnSaved) and a
-///     groan when a shot scores (GoalDetector.OnGoalScored), layered on top of the bed.
+/// Crowd audio for a training session. One looping clip is always playing from the start of the
+/// pre-start countdown until the session ends:
+///   - Cheer: starts when the session starts (RandomLauncher.OnSessionStarted) and plays until a
+///     goal is scored.
+///   - Boos: replaces the cheer when a shot scores (GoalDetector.OnGoalScored) and keeps playing
+///     until a save (GoalDetector.OnSaved) switches back to the cheer.
+///   - Silence: the audio stops when the session ends (RandomLauncher.OnSessionEnded).
 ///
-/// Stingers are 2D by default. Assign StandsPoint to play them spatially from that position
-/// instead, so they sound like they come from the stands.
-///
-/// Setup: attach to its own GameObject (e.g. "CrowdAudio") and drag in the clips. The
-/// AudioSources are created at runtime, so none need adding by hand. Launcher and Detector are
-/// found automatically if left empty (assumes one ball in the scene).
+/// Setup: attach to its own GameObject (e.g. "CrowdAudio") and drag in the two clips. The
+/// AudioSource is created at runtime. The RandomLauncher and GoalDetector are found
+/// automatically (assumes one of each in the scene). Both clips should be loop-friendly.
 /// </summary>
 public class CrowdAmbience : MonoBehaviour
 {
-    [Header("Event Sources")]
-    [Tooltip("Session start/end source. Leave empty to find the RandomLauncher in the scene.")]
-    public RandomLauncher launcher;
-
-    [Tooltip("Save/goal source. Leave empty to find the GoalDetector in the scene.")]
-    public GoalDetector detector;
-
-    [Header("Ambient Bed")]
-    [Tooltip("Looping crowd murmur played for the length of a session. Leave empty to disable.")]
-    public AudioClip ambientLoop;
-
-    [Tooltip("Ambient bed volume once fully faded in.")]
-    [Range(0f, 1f)]
-    public float ambientVolume = 0.4f;
-
-    [Tooltip("Seconds to fade the ambient bed in at session start.")]
-    [Min(0f)]
-    public float fadeInTime = 1.5f;
-
-    [Tooltip("Seconds to fade the ambient bed out at session end.")]
-    [Min(0f)]
-    public float fadeOutTime = 2.5f;
-
-    [Header("Reaction Stingers")]
-    [Tooltip("Played when the goalie saves a shot. Leave empty to disable.")]
+    [Tooltip("Loops from session start, and again after every save. Assets/Audio/CrowdCheers.wav")]
     public AudioClip saveCheer;
 
-    [Tooltip("Played when a shot scores on the goalie. Leave empty to disable.")]
+    [Tooltip("Loops after a goal is scored, until the next save or the end of the session. " +
+             "Assets/Audio/CrowdBoos.wav")]
     public AudioClip goalGroan;
 
-    [Range(0f, 1f)]
-    public float saveCheerVolume = 0.8f;
-
-    [Range(0f, 1f)]
-    public float goalGroanVolume = 0.8f;
-
-    [Tooltip("Optional. If set, stingers play spatially from this position (e.g. the stands) " +
-             "instead of as 2D sound.")]
-    public Transform standsPoint;
+    private const float Volume = 0.8f;
 
     // ── Private ───────────────────────────────────────────────────
 
-    private AudioSource _ambientSource;
-    private AudioSource _stingerSource;
-    private Coroutine _fade;
+    private RandomLauncher _launcher;
+    private GoalDetector _detector;
+    private AudioSource _source;
+    private bool _sessionActive;
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
     void Awake()
     {
-        if (launcher == null)
-            launcher = FindFirstObjectByType<RandomLauncher>();
-        if (detector == null)
-            detector = FindFirstObjectByType<GoalDetector>();
+        _launcher = FindFirstObjectByType<RandomLauncher>();
+        _detector = FindFirstObjectByType<GoalDetector>();
 
-        _ambientSource = CreateSource(loop: true);
-        _stingerSource = CreateSource(loop: false);
+        _source = gameObject.AddComponent<AudioSource>();
+        _source.playOnAwake = false;
+        _source.loop = true;
+        _source.spatialBlend = 0f; // 2D — reads as "the whole environment"
+        _source.volume = Volume;
     }
 
     void OnEnable()
     {
-        if (launcher != null)
+        if (_launcher != null)
         {
-            launcher.OnSessionStarted += HandleSessionStarted;
-            launcher.OnSessionEnded += HandleSessionEnded;
+            _launcher.OnSessionStarted += HandleSessionStarted;
+            _launcher.OnSessionEnded += HandleSessionEnded;
         }
         else
         {
-            Debug.LogWarning("[CrowdAmbience] No RandomLauncher found — ambient bed will never start.");
+            Debug.LogWarning("[CrowdAmbience] No RandomLauncher found — crowd audio will never start.");
         }
 
-        if (detector != null)
+        if (_detector != null)
         {
-            detector.OnSaved += HandleSaved;
-            detector.OnGoalScored += HandleGoalScored;
+            _detector.OnSaved += HandleSaved;
+            _detector.OnGoalScored += HandleGoalScored;
         }
         else
         {
-            Debug.LogWarning("[CrowdAmbience] No GoalDetector found — reaction stingers are disabled.");
+            Debug.LogWarning("[CrowdAmbience] No GoalDetector found — crowd audio will never switch.");
         }
     }
 
     void OnDisable()
     {
-        if (launcher != null)
+        if (_launcher != null)
         {
-            launcher.OnSessionStarted -= HandleSessionStarted;
-            launcher.OnSessionEnded -= HandleSessionEnded;
+            _launcher.OnSessionStarted -= HandleSessionStarted;
+            _launcher.OnSessionEnded -= HandleSessionEnded;
         }
 
-        if (detector != null)
+        if (_detector != null)
         {
-            detector.OnSaved -= HandleSaved;
-            detector.OnGoalScored -= HandleGoalScored;
+            _detector.OnSaved -= HandleSaved;
+            _detector.OnGoalScored -= HandleGoalScored;
         }
 
-        StopFade();
-        _ambientSource.Stop();
+        _sessionActive = false;
+        _source.Stop();
     }
 
     // ── Event handlers ────────────────────────────────────────────
 
     void HandleSessionStarted()
     {
-        if (ambientLoop == null)
-            return;
-
-        // Fade from wherever the bed currently is, so a session starting mid-fade-out doesn't
-        // restart the loop or jump in volume.
-        if (!_ambientSource.isPlaying)
-        {
-            _ambientSource.clip = ambientLoop;
-            _ambientSource.volume = 0f;
-            _ambientSource.Play();
-        }
-        StartFade(ambientVolume, fadeInTime, stopWhenDone: false);
+        _sessionActive = true;
+        Play(saveCheer);
     }
 
     void HandleSessionEnded()
     {
-        if (_ambientSource.isPlaying)
-            StartFade(0f, fadeOutTime, stopWhenDone: true);
+        _sessionActive = false;
+        _source.Stop();
     }
 
-    void HandleSaved(Vector3 _) => PlayStinger(saveCheer, saveCheerVolume);
+    void HandleSaved(Vector3 _)
+    {
+        if (_sessionActive)
+            Play(saveCheer);
+    }
 
-    void HandleGoalScored(Vector3 _) => PlayStinger(goalGroan, goalGroanVolume);
+    void HandleGoalScored(Vector3 _)
+    {
+        if (_sessionActive)
+            Play(goalGroan);
+    }
 
     // ── Audio ─────────────────────────────────────────────────────
 
-    AudioSource CreateSource(bool loop)
-    {
-        var source = gameObject.AddComponent<AudioSource>();
-        source.playOnAwake = false;
-        source.loop = loop;
-        source.spatialBlend = 0f; // 2D — reads as "the whole environment"
-        return source;
-    }
-
-    void PlayStinger(AudioClip clip, float volume)
+    /// <summary>
+    /// Switches the loop to <paramref name="clip"/>. Does nothing if it's already the clip
+    /// playing, so back-to-back goals (or saves) don't restart it.
+    /// </summary>
+    void Play(AudioClip clip)
     {
         if (clip == null)
             return;
 
-        if (standsPoint != null)
-            AudioSource.PlayClipAtPoint(clip, standsPoint.position, volume);
-        else
-            _stingerSource.PlayOneShot(clip, volume);
-    }
+        if (_source.isPlaying && _source.clip == clip)
+            return;
 
-    void StartFade(float targetVolume, float duration, bool stopWhenDone)
-    {
-        StopFade();
-        _fade = StartCoroutine(Fade(targetVolume, duration, stopWhenDone));
-    }
-
-    void StopFade()
-    {
-        if (_fade != null)
-        {
-            StopCoroutine(_fade);
-            _fade = null;
-        }
-    }
-
-    IEnumerator Fade(float targetVolume, float duration, bool stopWhenDone)
-    {
-        float startVolume = _ambientSource.volume;
-        for (float t = 0f; t < duration; t += Time.deltaTime)
-        {
-            _ambientSource.volume = Mathf.Lerp(startVolume, targetVolume, t / duration);
-            yield return null;
-        }
-
-        _ambientSource.volume = targetVolume;
-        if (stopWhenDone)
-            _ambientSource.Stop();
-        _fade = null;
+        _source.clip = clip;
+        _source.Play();
     }
 }
