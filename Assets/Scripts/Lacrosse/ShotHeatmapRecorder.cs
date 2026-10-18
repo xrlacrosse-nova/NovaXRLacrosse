@@ -52,8 +52,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
              "set by the script so each label hugs its own outer corner.")]
     public TextMeshProUGUI[] cornerLabels = new TextMeshProUGUI[4];
 
-    [Tooltip("Fallback only: used when headlineText is unassigned. Gets the headline plus all four " +
-             "corner counts as plain lines. Leave unassigned to disable.")]
+    [Tooltip("Fallback only: used when headlineText is unassigned. Shows the overall session total " +
+             "plus the per-quadrant save/score tally, e.g. 'SHOT HEATMAP — 6/8 saved' on one line and " +
+             "'TL: 2/2 saved · TR: 0/1 saved · BL: 3/3 saved · BR: 1/2 saved' on the next. Leave " +
+             "unassigned to disable.")]
     public TextMeshProUGUI quadrantBreakdownText;
 
     [Tooltip("Prefab instantiated for each saved shot — a small UI Image (e.g. a circle sprite).")]
@@ -295,12 +297,27 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         if (headlineText == null && quadrantBreakdownText != null)
         {
+            string Tally(Quadrant q)
+            {
+                int index = (int)q;
+                return $"{QuadrantLabel(q)}: {saves[index]}/{totals[index]} saved";
+            }
+
             quadrantBreakdownText.text =
-                $"{headline}\n" +
-                $"{CornerName(Quadrant.TopLeft)} {Count(Quadrant.TopLeft)}, " +
-                $"{CornerName(Quadrant.TopRight)} {Count(Quadrant.TopRight)}\n" +
-                $"{CornerName(Quadrant.BottomLeft)} {Count(Quadrant.BottomLeft)}, " +
-                $"{CornerName(Quadrant.BottomRight)} {Count(Quadrant.BottomRight)}";
+                $"SHOT HEATMAP — {totalSaves}/{_points.Count} saved\n" +
+                $"{Tally(Quadrant.TopLeft)} · {Tally(Quadrant.TopRight)} · " +
+                $"{Tally(Quadrant.BottomLeft)} · {Tally(Quadrant.BottomRight)}";
+        }
+    }
+
+    private static string QuadrantLabel(Quadrant quadrant)
+    {
+        switch (quadrant)
+        {
+            case Quadrant.TopLeft: return "TL";
+            case Quadrant.TopRight: return "TR";
+            case Quadrant.BottomLeft: return "BL";
+            default: return "BR";
         }
     }
 

@@ -108,7 +108,7 @@ public class RandomLauncher : MonoBehaviour
     public ShooterAnimationController shooterAnimation;
 
     [Header("UI (World Space Canvas)")]
-    [Tooltip("TextMeshPro label used for Ready / countdown digits / Go. Leave unassigned to disable.")]
+    [Tooltip("TextMeshPro label used for GET READY / countdown digits / GO!. Leave unassigned to disable.")]
     public TextMeshProUGUI countdownText;
 
     // ── Private ───────────────────────────────────────────────────
@@ -139,7 +139,7 @@ public class RandomLauncher : MonoBehaviour
     private bool _showCountdown = false;
     private float _countdownRemaining = 0f;
     private float _goDisplayTimer = 0f;
-    // Short so "Go" is gone before the first windup reaches release.
+    // Short so "GO!" is gone before the first windup reaches release.
     private const float GoDisplayDuration = 0.5f;
 
     // last target (used by Gizmos to show where the next/last shot went)
@@ -511,7 +511,7 @@ public class RandomLauncher : MonoBehaviour
         else if (_goDisplayTimer > 0f)
         {
             float progress = 1f - (_goDisplayTimer / GoDisplayDuration);
-            SetLabel("Go", UiPalette.Chalk, progress, animate: true);
+            SetLabel("GO!", UiPalette.Chalk, progress, animate: true);
         }
         else
         {
@@ -523,7 +523,7 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_countdownRemaining > 3f)
         {
-            SetLabel("Ready", UiPalette.Chalk, 0f, animate: false);
+            SetLabel("GET READY", UiPalette.Chalk, 0f, animate: false);
             return;
         }
 
