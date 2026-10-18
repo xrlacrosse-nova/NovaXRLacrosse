@@ -70,6 +70,8 @@ public class ShooterAnimationController : MonoBehaviour
     private bool _watching = false;
     private int _playFrame;
     private float _elapsed;
+    private float _lastNormalizedTime;
+    private float _stalled;
 
     /// <summary>True if there's an Animator with a controller that has the Shoot state.
     /// RandomLauncher falls back to instant launches when this is false.</summary>
@@ -121,10 +123,27 @@ public class ShooterAnimationController : MonoBehaviour
             if (state.shortNameHash == _shootHash)
             {
                 if (state.normalizedTime >= releaseNormalizedTime)
+                {
                     Release(state.normalizedTime, timedOut: false);
+                    return;
+                }
 
-                // The clip is playing, so the release point will be reached. The timeout only
-                // guards against the Shoot state never starting, not against a long windup.
+                // The clip should be advancing toward the release point. Only give up if its
+                // time stops advancing (Animator speed 0, culled, etc.), not on a long windup.
+                if (state.normalizedTime > _lastNormalizedTime)
+                {
+                    _lastNormalizedTime = state.normalizedTime;
+                    _stalled = 0f;
+                    return;
+                }
+
+                _stalled += Time.deltaTime;
+                if (_stalled >= releaseTimeout)
+                {
+                    Debug.LogWarning($"[ShooterAnimationController] '{shootStateName}' stopped advancing for " +
+                                     $"{releaseTimeout}s — releasing anyway. Check Animator speed/culling.", this);
+                    Release(-1f, timedOut: true);
+                }
                 return;
             }
         }
@@ -156,6 +175,8 @@ public class ShooterAnimationController : MonoBehaviour
         _watching = true;
         _playFrame = Time.frameCount;
         _elapsed = 0f;
+        _lastNormalizedTime = -1f;
+        _stalled = 0f;
 
         if (logRelease)
             Debug.Log("[ShooterAnimationController] Shot started.");

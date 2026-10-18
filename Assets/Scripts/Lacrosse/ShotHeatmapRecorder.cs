@@ -13,37 +13,79 @@ using UnityEngine.UI;
 /// and is cleared/hidden the moment the next session starts (RandomLauncher.OnSessionStarted). It never
 /// shows during active play. If no RandomLauncher is present, points are still recorded but the
 /// heatmap is only ever shown/cleared manually via ShowHeatmap()/ClearRecordedShots().
+///
+/// Readout (Plans/Current/UI_Design_Plan.md, Phase 2): dotContainer is drawn as the goal mouth —
+/// an optional runtime-built cage frame, each corner's name and save count inside that corner,
+/// and a "6 of 8 saved" headline. Saves are dots, goals use goalMarkPrefab (e.g. an ×) so the
+/// two read apart by shape as well as color.
 /// </summary>
 [RequireComponent(typeof(GoalDetector))]
 public class ShotHeatmapRecorder : MonoBehaviour
 {
+    public enum GoalieHand { Right, Left }
+
     [Header("Visualization")]
     [Tooltip("Color for shots that scored (bad outcome — the goalie let it in).")]
-    public Color scoreColor = Color.red;
+    public Color scoreColor = UiPalette.Goal;
 
     [Tooltip("Color for shots that were saved (good outcome — the goalie kept it out).")]
-    public Color saveColor = Color.green;
+    public Color saveColor = UiPalette.Save;
 
     [Tooltip("Diameter (in UI units) of each plotted shot dot.")]
-    [Range(4f, 60f)]
+    [Range(4f, 200f)]
     public float dotSize = 26f;
+
+    [Tooltip("The goalie's stick hand. Sets which corners are called 'Stick' vs 'Off-stick': " +
+             "for a right-handed goalie, stick side is the goalie's right.")]
+    public GoalieHand goalieHand = GoalieHand.Right;
 
     [Header("UI (World Space Canvas)")]
     [Tooltip("Root panel toggled active/inactive to show or hide the whole heatmap. Leave unassigned to disable.")]
     public GameObject heatmapPanel;
 
-    [Tooltip("TextMeshPro label showing the overall session total plus the per-quadrant save/score " +
-             "tally, e.g. 'SHOT HEATMAP — 6/8 saved' on one line and 'TL: 2/2 saved · TR: 0/1 saved · " +
-             "BL: 3/3 saved · BR: 1/2 saved' on the next. Leave unassigned to disable.")]
+    [Tooltip("Headline under the cage, e.g. '6 of 8 saved'. Leave unassigned to fall back to " +
+             "quadrantBreakdownText.")]
+    public TextMeshProUGUI headlineText;
+
+    [Tooltip("One label per corner, in Quadrant order: TopLeft, TopRight, BottomLeft, BottomRight. " +
+             "Each gets its corner's name and count, e.g. 'Stick high\\n0 of 1'. Text alignment is " +
+             "set by the script so each label hugs its own outer corner.")]
+    public TextMeshProUGUI[] cornerLabels = new TextMeshProUGUI[4];
+
+    [Tooltip("Fallback only: used when headlineText is unassigned. Shows the overall session total " +
+             "plus the per-quadrant save/score tally, e.g. 'SHOT HEATMAP — 6/8 saved' on one line and " +
+             "'TL: 2/2 saved · TR: 0/1 saved · BL: 3/3 saved · BR: 1/2 saved' on the next. Leave " +
+             "unassigned to disable.")]
     public TextMeshProUGUI quadrantBreakdownText;
 
-    [Tooltip("Prefab instantiated for each recorded shot — a small UI Image (e.g. a circle sprite).")]
+    [Tooltip("Prefab instantiated for each saved shot — a small UI Image (e.g. a circle sprite).")]
     public RectTransform dotPrefab;
+
+    [Tooltip("Optional prefab for shots that scored, e.g. a TMP text holding '×'. Its Image or " +
+             "TMP text is tinted scoreColor. Leave unassigned to use dotPrefab for goals too.")]
+    public RectTransform goalMarkPrefab;
 
     [Tooltip("Defines the heatmap box: dots are instantiated as children of this RectTransform and " +
              "positioned within its bounds. Its pivot must be (0.5, 0.5) — center — so normalized " +
              "shot coordinates map directly onto anchoredPosition.")]
     public RectTransform dotContainer;
+
+    [Header("Cage Frame")]
+    [Tooltip("Build a goal frame (posts, crossbar, bottom bar) and a quadrant crosshair around " +
+             "dotContainer at runtime. Turn off if the panel already has hand-placed grid lines.")]
+    public bool drawCageFrame = false;
+
+    [Tooltip("Thickness (UI units) of the posts and crossbar, drawn just outside the box.")]
+    [Min(0f)]
+    public float postThickness = 45f;
+
+    [Tooltip("Thickness (UI units) of the bottom bar, drawn just outside the box.")]
+    [Min(0f)]
+    public float bottomBarThickness = 16f;
+
+    [Tooltip("Thickness (UI units) of the dim crosshair splitting the box into quadrants.")]
+    [Min(0f)]
+    public float crosshairThickness = 10f;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -54,6 +96,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     private readonly List<bool> _scored = new List<bool>();
     private readonly List<RectTransform> _dotInstances = new List<RectTransform>();
     private bool _visible = false;
+    private GameObject _cageFrame;
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -169,8 +212,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
         if (heatmapPanel != null)
             heatmapPanel.SetActive(true);
 
-        if (quadrantBreakdownText != null)
-            quadrantBreakdownText.text = BuildQuadrantBreakdown();
+        UpdateCageFrame();
+        UpdateLabels();
 
         ClearDotInstances();
 
@@ -179,11 +222,13 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         for (int i = 0; i < _points.Count; i++)
         {
+            RectTransform prefab = _scored[i] && goalMarkPrefab != null ? goalMarkPrefab : dotPrefab;
+
             // worldPositionStays: false — dotContainer sits under a heavily-downscaled World
             // Space canvas, so the default world-position-preserving Instantiate would blow up
             // each dot's localScale to compensate, making dots render enormous and overlap into
             // one blob near the center instead of appearing as small, correctly-spread markers.
-            RectTransform dot = Instantiate(dotPrefab, dotContainer, false);
+            RectTransform dot = Instantiate(prefab, dotContainer, false);
             dot.gameObject.SetActive(true);
             dot.localScale = Vector3.one;
             dot.sizeDelta = Vector2.one * dotSize;
@@ -194,9 +239,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
                 _points[i].x * 0.5f * boxSize.x,
                 _points[i].y * 0.5f * boxSize.y);
 
-            Image img = dot.GetComponent<Image>();
-            if (img != null)
-                img.color = _scored[i] ? scoreColor : saveColor;
+            // Graphic covers both a UI Image (dot) and a TMP text (× goal mark).
+            Graphic graphic = dot.GetComponent<Graphic>();
+            if (graphic != null)
+                graphic.color = _scored[i] ? scoreColor : saveColor;
 
             Debug.Log($"[ShotHeatmapRecorder] Dot {i}: normalized=({_points[i].x:F3}, {_points[i].y:F3}) " +
                       $"-> anchoredPosition={dot.anchoredPosition} scored={_scored[i]}");
@@ -206,37 +252,62 @@ public class ShotHeatmapRecorder : MonoBehaviour
     }
 
     /// <summary>Buckets each recorded point by quadrant, fresh off the same _points/_scored lists
-    /// the dot-plot already uses — no separate running counters to keep in sync or reset. Leads
-    /// with the overall session total so this can be the heatmap's only text label.</summary>
-    private string BuildQuadrantBreakdown()
+    /// the dot-plot already uses — no separate running counters to keep in sync or reset — and
+    /// writes the headline and corner labels (or the single fallback label).</summary>
+    private void UpdateLabels()
     {
-        int[] scores = new int[4];
+        int[] saves = new int[4];
         int[] totals = new int[4];
-        int totalScores = 0;
+        int totalSaves = 0;
 
         for (int i = 0; i < _points.Count; i++)
         {
             int index = (int)QuadrantMath.BucketFromNormalized(_points[i]);
             totals[index]++;
-            if (_scored[i])
+            if (!_scored[i])
             {
-                scores[index]++;
-                totalScores++;
+                saves[index]++;
+                totalSaves++;
             }
         }
 
-        int totalSaves = _points.Count - totalScores;
+        string headline = $"{totalSaves} of {_points.Count} saved";
 
-        string Tally(Quadrant q)
+        string Count(Quadrant q)
         {
             int index = (int)q;
-            int saves = totals[index] - scores[index];
-            return $"{QuadrantLabel(q)}: {saves}/{totals[index]} saved";
+            return totals[index] == 0 ? "No shots" : $"{saves[index]} of {totals[index]}";
         }
 
-        return $"SHOT HEATMAP — {totalSaves}/{_points.Count} saved\n" +
-               $"{Tally(Quadrant.TopLeft)} · {Tally(Quadrant.TopRight)} · " +
-               $"{Tally(Quadrant.BottomLeft)} · {Tally(Quadrant.BottomRight)}";
+        if (headlineText != null)
+            headlineText.text = headline;
+
+        if (cornerLabels != null)
+        {
+            for (int i = 0; i < cornerLabels.Length && i < 4; i++)
+            {
+                if (cornerLabels[i] == null) continue;
+
+                Quadrant q = (Quadrant)i;
+                cornerLabels[i].text = $"{CornerName(q)}\n{Count(q)}";
+                cornerLabels[i].alignment = CornerAlignment(q);
+                cornerLabels[i].color = UiPalette.Chalk;
+            }
+        }
+
+        if (headlineText == null && quadrantBreakdownText != null)
+        {
+            string Tally(Quadrant q)
+            {
+                int index = (int)q;
+                return $"{QuadrantLabel(q)}: {saves[index]}/{totals[index]} saved";
+            }
+
+            quadrantBreakdownText.text =
+                $"SHOT HEATMAP — {totalSaves}/{_points.Count} saved\n" +
+                $"{Tally(Quadrant.TopLeft)} · {Tally(Quadrant.TopRight)} · " +
+                $"{Tally(Quadrant.BottomLeft)} · {Tally(Quadrant.BottomRight)}";
+        }
     }
 
     private static string QuadrantLabel(Quadrant quadrant)
@@ -248,6 +319,96 @@ public class ShotHeatmapRecorder : MonoBehaviour
             case Quadrant.BottomLeft: return "BL";
             default: return "BR";
         }
+    }
+
+    /// <summary>Goalie terms for a corner. Quadrant Left is -X, the goalie's own left (the
+    /// goalie faces +Z); for a right-handed goalie the stick side is the right.</summary>
+    private string CornerName(Quadrant quadrant)
+    {
+        bool left = quadrant == Quadrant.TopLeft || quadrant == Quadrant.BottomLeft;
+        bool top = quadrant == Quadrant.TopLeft || quadrant == Quadrant.TopRight;
+        bool stickSide = goalieHand == GoalieHand.Right ? !left : left;
+
+        return (stickSide ? "Stick" : "Off-stick") + (top ? " high" : " low");
+    }
+
+    private static TextAlignmentOptions CornerAlignment(Quadrant quadrant)
+    {
+        switch (quadrant)
+        {
+            case Quadrant.TopLeft: return TextAlignmentOptions.TopLeft;
+            case Quadrant.TopRight: return TextAlignmentOptions.TopRight;
+            case Quadrant.BottomLeft: return TextAlignmentOptions.BottomLeft;
+            default: return TextAlignmentOptions.BottomRight;
+        }
+    }
+
+    // ── Cage frame ───────────────────────────────────────────────
+
+    /// <summary>Builds the frame once, the first time it's needed, as children of dotContainer
+    /// stretched to its rect — so it follows the box's size with nothing hand-placed. Bars sit
+    /// just outside the box so they never cover a dot on the edge.</summary>
+    private void UpdateCageFrame()
+    {
+        if (!drawCageFrame)
+        {
+            if (_cageFrame != null)
+                _cageFrame.SetActive(false);
+            return;
+        }
+
+        if (_cageFrame == null)
+        {
+            RectTransform root = CreateRect("CageFrame", dotContainer, Vector2.zero, Vector2.one,
+                                            Vector2.zero, Vector2.zero);
+            // First sibling, so dots and labels draw on top of it.
+            root.SetAsFirstSibling();
+            _cageFrame = root.gameObject;
+
+            float p = postThickness;
+            float b = bottomBarThickness;
+            float c = crosshairThickness * 0.5f;
+
+            // Crosshair first, so the frame bars draw over its ends.
+            CreateBar("CrosshairVertical", root, new Vector2(0.5f, 0f), new Vector2(0.5f, 1f),
+                      new Vector2(-c, 0f), new Vector2(c, 0f), UiPalette.Smoke);
+            CreateBar("CrosshairHorizontal", root, new Vector2(0f, 0.5f), new Vector2(1f, 0.5f),
+                      new Vector2(0f, -c), new Vector2(0f, c), UiPalette.Smoke);
+
+            CreateBar("LeftPost", root, new Vector2(0f, 0f), new Vector2(0f, 1f),
+                      new Vector2(-p, -b), new Vector2(0f, p), UiPalette.Chalk);
+            CreateBar("RightPost", root, new Vector2(1f, 0f), new Vector2(1f, 1f),
+                      new Vector2(0f, -b), new Vector2(p, p), UiPalette.Chalk);
+            CreateBar("Crossbar", root, new Vector2(0f, 1f), new Vector2(1f, 1f),
+                      new Vector2(0f, 0f), new Vector2(0f, p), UiPalette.Chalk);
+            CreateBar("BottomBar", root, new Vector2(0f, 0f), new Vector2(1f, 0f),
+                      new Vector2(0f, -b), new Vector2(0f, 0f), UiPalette.Chalk);
+        }
+
+        _cageFrame.SetActive(true);
+    }
+
+    private static RectTransform CreateRect(string name, Transform parent, Vector2 anchorMin,
+                                            Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform));
+        RectTransform rect = go.GetComponent<RectTransform>();
+        rect.SetParent(parent, false);
+        rect.localScale = Vector3.one;
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
+        return rect;
+    }
+
+    private static void CreateBar(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax,
+                                  Vector2 offsetMin, Vector2 offsetMax, Color color)
+    {
+        RectTransform rect = CreateRect(name, parent, anchorMin, anchorMax, offsetMin, offsetMax);
+        Image image = rect.gameObject.AddComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
     }
 
     private void ClearDotInstances()

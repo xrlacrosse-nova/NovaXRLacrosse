@@ -127,13 +127,20 @@ public class RandomLauncher : MonoBehaviour
 
     // shot waiting on the shooter animation's release frame
     private bool _awaitingRelease = false;
+    private Coroutine _releaseWatchdog;
+
+    [Tooltip("If the shooter animation hasn't released within this many seconds, launch the shot " +
+             "anyway so a session can't hang.")]
+    [Min(0.5f)]
+    public float releaseWatchdogSeconds = 5f;
     private Quadrant _pendingQuadrant;
 
     // pre-start countdown display state
     private bool _showCountdown = false;
     private float _countdownRemaining = 0f;
     private float _goDisplayTimer = 0f;
-    private const float GoDisplayDuration = 1f;
+    // Short so "GO!" is gone before the first windup reaches release.
+    private const float GoDisplayDuration = 0.5f;
 
     // last target (used by Gizmos to show where the next/last shot went)
     private Vector3 _lastTarget;
@@ -347,7 +354,24 @@ public class RandomLauncher : MonoBehaviour
         // (HandleShooterRelease), so the ball leaves the stick when the avatar shoots.
         _pendingQuadrant = PickRandomQuadrant();
         _awaitingRelease = true;
+        if (_releaseWatchdog != null) StopCoroutine(_releaseWatchdog);
+        _releaseWatchdog = StartCoroutine(ReleaseWatchdog());
         shooterAnimation.PlayShot();
+    }
+
+    /// <summary>Launches the pending shot anyway if the shooter's release never arrives
+    /// (animation disabled or stalled), so a session can never hang waiting on it.</summary>
+    private IEnumerator ReleaseWatchdog()
+    {
+        yield return new WaitForSeconds(releaseWatchdogSeconds);
+        _releaseWatchdog = null;
+
+        if (!_awaitingRelease) yield break;
+
+        Debug.LogWarning($"[RandomLauncher] Shooter release didn't arrive within {releaseWatchdogSeconds}s " +
+                         "— launching anyway.");
+        _awaitingRelease = false;
+        LaunchToward(_pendingQuadrant);
     }
 
     /// <summary>Called by ShooterAnimationController on the shooting clip's release frame.
@@ -357,6 +381,11 @@ public class RandomLauncher : MonoBehaviour
         if (!_awaitingRelease) return;
 
         _awaitingRelease = false;
+        if (_releaseWatchdog != null)
+        {
+            StopCoroutine(_releaseWatchdog);
+            _releaseWatchdog = null;
+        }
         LaunchToward(_pendingQuadrant);
     }
 
@@ -382,10 +411,12 @@ public class RandomLauncher : MonoBehaviour
         Vector3 origin = launchOrigin != null ? launchOrigin.position : transform.position;
 
         // ── 2. Reset the ball position & physics ─────────────────
+        // Always un-hide the ball (it's hidden until shot), even if autoResetOnLaunch is off.
+        _floorBoundary?.CancelDespawn();
+
         if (autoResetOnLaunch)
         {
             _goalDetector.ResetState();
-            _floorBoundary?.CancelDespawn();
 
             _rb.isKinematic = false;
             _rb.useGravity = false;
@@ -480,7 +511,7 @@ public class RandomLauncher : MonoBehaviour
         else if (_goDisplayTimer > 0f)
         {
             float progress = 1f - (_goDisplayTimer / GoDisplayDuration);
-            SetLabel("GO!", Color.green, progress, animate: true);
+            SetLabel("GO!", UiPalette.Chalk, progress, animate: true);
         }
         else
         {
@@ -492,7 +523,7 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_countdownRemaining > 3f)
         {
-            SetLabel("GET READY", Color.white, 0f, animate: false);
+            SetLabel("GET READY", UiPalette.Chalk, 0f, animate: false);
             return;
         }
 
@@ -501,7 +532,7 @@ public class RandomLauncher : MonoBehaviour
         // progress goes 0 -> 1 across the digit's one-second window.
         float fractionInSecond = _countdownRemaining - (digit - 1);
         float progress = Mathf.Clamp01(1f - fractionInSecond);
-        SetLabel(digit.ToString(), Color.yellow, progress, animate: true);
+        SetLabel(digit.ToString(), UiPalette.Chalk, progress, animate: true);
     }
 
     /// <summary>Same scale-pop/fade beat as the old OnGUI overlay, now applied to a
