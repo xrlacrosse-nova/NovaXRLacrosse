@@ -108,7 +108,7 @@ public class RandomLauncher : MonoBehaviour
     public ShooterAnimationController shooterAnimation;
 
     [Header("UI (World Space Canvas)")]
-    [Tooltip("TextMeshPro label used for GET READY / countdown digits / GO!. Leave unassigned to disable.")]
+    [Tooltip("TextMeshPro label used for Ready / countdown digits / Go. Leave unassigned to disable.")]
     public TextMeshProUGUI countdownText;
 
     // ── Private ───────────────────────────────────────────────────
@@ -139,7 +139,8 @@ public class RandomLauncher : MonoBehaviour
     private bool _showCountdown = false;
     private float _countdownRemaining = 0f;
     private float _goDisplayTimer = 0f;
-    private const float GoDisplayDuration = 1f;
+    // Short so "Go" is gone before the first windup reaches release.
+    private const float GoDisplayDuration = 0.5f;
 
     // last target (used by Gizmos to show where the next/last shot went)
     private Vector3 _lastTarget;
@@ -510,7 +511,7 @@ public class RandomLauncher : MonoBehaviour
         else if (_goDisplayTimer > 0f)
         {
             float progress = 1f - (_goDisplayTimer / GoDisplayDuration);
-            SetLabel("GO!", Color.green, progress, animate: true);
+            SetLabel("Go", UiPalette.Chalk, progress, animate: true);
         }
         else
         {
@@ -522,7 +523,7 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_countdownRemaining > 3f)
         {
-            SetLabel("GET READY", Color.white, 0f, animate: false);
+            SetLabel("Ready", UiPalette.Chalk, 0f, animate: false);
             return;
         }
 
@@ -531,7 +532,7 @@ public class RandomLauncher : MonoBehaviour
         // progress goes 0 -> 1 across the digit's one-second window.
         float fractionInSecond = _countdownRemaining - (digit - 1);
         float progress = Mathf.Clamp01(1f - fractionInSecond);
-        SetLabel(digit.ToString(), Color.yellow, progress, animate: true);
+        SetLabel(digit.ToString(), UiPalette.Chalk, progress, animate: true);
     }
 
     /// <summary>Same scale-pop/fade beat as the old OnGUI overlay, now applied to a

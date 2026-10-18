@@ -19,10 +19,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
 {
     [Header("Visualization")]
     [Tooltip("Color for shots that scored (bad outcome — the goalie let it in).")]
-    public Color scoreColor = Color.red;
+    public Color scoreColor = UiPalette.Pipe;
 
     [Tooltip("Color for shots that were saved (good outcome — the goalie kept it out).")]
-    public Color saveColor = Color.green;
+    public Color saveColor = UiPalette.Ice;
 
     [Tooltip("Diameter (in UI units) of each plotted shot dot.")]
     [Range(4f, 60f)]

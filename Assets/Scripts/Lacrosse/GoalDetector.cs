@@ -32,10 +32,10 @@ public class GoalDetector : MonoBehaviour
     public Vector2 goalGateHalfSize = new Vector2(0.9f, 0.6f);
 
     [Header("UI")]
-    [Tooltip("Show a GOAL! / SAVE! overlay when the shot ends in a goal or a save.")]
+    [Tooltip("Show a Goal / Save cue when the shot ends in a goal or a save.")]
     public bool showOnScreenGoal = true;
 
-    [Tooltip("TextMeshPro label used for the GOAL! / SAVE! popup. Leave unassigned to disable.")]
+    [Tooltip("TextMeshPro label used for the Goal / Save cue. Leave unassigned to disable.")]
     public TextMeshProUGUI goalText;
 
     // ── state ─────────────────────────────────────────────────────
@@ -49,10 +49,12 @@ public class GoalDetector : MonoBehaviour
     private float _prevZ;
 
     // what the popup currently says (set when a goal or save happens)
-    private string _popupText = "GOAL!";
-    private Color _popupColor = Color.yellow;
+    private string _popupText = "Goal";
+    private Color _popupColor = UiPalette.Pipe;
 
-    private const float DisplayDuration = 3f;
+    // The cue holds at full alpha, then fades out over the rest of DisplayDuration.
+    private const float DisplayDuration = 1.2f;
+    private const float HoldDuration = 0.6f;
 
     // ── events ────────────────────────────────────────────────────
 
@@ -89,7 +91,7 @@ public class GoalDetector : MonoBehaviour
 
     void Update()
     {
-        // Tick the GOAL! display countdown
+        // Tick the Goal / Save cue countdown
         if (_displayTimer > 0f)
             _displayTimer -= Time.deltaTime;
 
@@ -128,8 +130,8 @@ public class GoalDetector : MonoBehaviour
             if (insideGate)
             {
                 _goalScored = true;
-                _popupText = "GOAL!";
-                _popupColor = Color.yellow;
+                _popupText = "Goal";
+                _popupColor = UiPalette.Pipe;
                 _displayTimer = DisplayDuration;
                 Debug.Log($"[GoalDetector] GOAL! Crossed gate at " +
                           $"({crossingPos.x:F2}, {crossingPos.y:F2}, {goalGateCenter.z:F2})");
@@ -186,8 +188,8 @@ public class GoalDetector : MonoBehaviour
         _resolved = true;
         SaveContactPosition = contactPos;
 
-        _popupText = "SAVE!";
-        _popupColor = Color.green;
+        _popupText = "Save";
+        _popupColor = UiPalette.Ice;
         _displayTimer = DisplayDuration;
 
         Vector3 projected = ProjectToGatePlane(contactPos, ballVelocity);
@@ -212,8 +214,8 @@ public class GoalDetector : MonoBehaviour
 
     // ── on-screen UI ──────────────────────────────────────────────
 
-    /// <summary>Same scale-pop/fade beat as the old OnGUI overlay, now applied to a
-    /// world-space TextMeshPro label instead of an IMGUI Rect.</summary>
+    /// <summary>Hold, then fade. No scale-pop: the countdown owns that motion, so a goal and
+    /// a "3" never look the same.</summary>
     private void UpdateGoalText()
     {
         if (goalText == null) return;
@@ -224,17 +226,9 @@ public class GoalDetector : MonoBehaviour
             return;
         }
 
-        // progress goes 0 -> 1 over DisplayDuration
-        float progress = 1f - (_displayTimer / DisplayDuration);
-        float eased = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(progress));
-
-        // scale anim: pop from larger to normal
-        float scale = Mathf.Lerp(2.0f, 1.0f, eased);
-        // small subtle oscillation to make it feel lively
-        scale *= 1.0f + 0.05f * Mathf.Sin(eased * Mathf.PI * 4f);
-
-        // fade out over time
-        float alpha = Mathf.Lerp(1f, 0f, Mathf.Clamp01(progress));
+        // full alpha for HoldDuration, then linear fade to 0 over the remaining time
+        float elapsed = DisplayDuration - _displayTimer;
+        float alpha = 1f - Mathf.Clamp01((elapsed - HoldDuration) / (DisplayDuration - HoldDuration));
 
         goalText.gameObject.SetActive(true);
         goalText.text = _popupText;
@@ -242,7 +236,7 @@ public class GoalDetector : MonoBehaviour
         Color color = _popupColor;
         color.a = alpha;
         goalText.color = color;
-        goalText.rectTransform.localScale = Vector3.one * scale;
+        goalText.rectTransform.localScale = Vector3.one;
     }
 
     // ── Gizmos ────────────────────────────────────────────────────
