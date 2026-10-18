@@ -58,6 +58,10 @@ public class GoalDetector : MonoBehaviour
 
     // ── events ────────────────────────────────────────────────────
 
+    /// <summary>Fired when a shot is launched (from <see cref="OnBallLaunched"/>), after the
+    /// detection state has been reset, so <see cref="ShotInFlight"/> is already true.</summary>
+    public event Action OnShotLaunched;
+
     /// <summary>Fired whenever the ball crosses the gate plane, whether it's a goal or a miss.</summary>
     public event Action<Vector3> OnPlaneCrossed;
 
@@ -159,6 +163,8 @@ public class GoalDetector : MonoBehaviour
         _saved = false;
         _resolved = false;
         _prevZ = transform.position.z;
+
+        OnShotLaunched?.Invoke();
     }
 
     /// <summary>Resets all detection state ready for the next shot.</summary>
