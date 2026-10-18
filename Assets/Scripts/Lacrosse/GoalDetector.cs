@@ -50,7 +50,7 @@ public class GoalDetector : MonoBehaviour
 
     // what the popup currently says (set when a goal or save happens)
     private string _popupText = "Goal";
-    private Color _popupColor = UiPalette.Pipe;
+    private Color _popupColor = UiPalette.Goal;
 
     // The cue holds at full alpha, then fades out over the rest of DisplayDuration.
     private const float DisplayDuration = 1.2f;
@@ -131,7 +131,7 @@ public class GoalDetector : MonoBehaviour
             {
                 _goalScored = true;
                 _popupText = "Goal";
-                _popupColor = UiPalette.Pipe;
+                _popupColor = UiPalette.Goal;
                 _displayTimer = DisplayDuration;
                 Debug.Log($"[GoalDetector] GOAL! Crossed gate at " +
                           $"({crossingPos.x:F2}, {crossingPos.y:F2}, {goalGateCenter.z:F2})");
@@ -189,7 +189,7 @@ public class GoalDetector : MonoBehaviour
         SaveContactPosition = contactPos;
 
         _popupText = "Save";
-        _popupColor = UiPalette.Ice;
+        _popupColor = UiPalette.Save;
         _displayTimer = DisplayDuration;
 
         Vector3 projected = ProjectToGatePlane(contactPos, ballVelocity);

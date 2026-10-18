@@ -5,20 +5,21 @@ using UnityEngine;
 /// scoreboard"). Magic Leap 2 is an additive display, so every token is bright: dark values
 /// render as transparent.
 ///
-/// Color is data: Pipe and Ice mean goal and save everywhere, and are never used for
-/// decoration. Field markings stay plain white / pale yellow and don't use these tokens.
+/// Color is data: Goal and Save mean goal and save everywhere, and are never used for
+/// decoration. Red/green is hard to tell apart for some color-vision deficiencies, so shape
+/// backs it up (saves are dots, goals are an ×). Field markings stay plain white / pale
+/// yellow and don't use these tokens.
 /// </summary>
 public static class UiPalette
 {
-    /// <summary>#FF6A1A. Goals against (the ball beat you into the pipes), and the cage frame
-    /// on the readout. Outcome only.</summary>
-    public static readonly Color Pipe = Hex(0xFF6A1A);
+    /// <summary>#FF0000 (same as Color.red). Goals against. Outcome only.</summary>
+    public static readonly Color Goal = Hex(0xFF0000);
 
-    /// <summary>#5CE1FF. Saves. Opposite Pipe on the blue–orange axis, so the pair stays
-    /// distinct under the common color-vision deficiencies.</summary>
-    public static readonly Color Ice = Hex(0x5CE1FF);
+    /// <summary>#00FF00 (same as Color.green). Saves. Outcome only.</summary>
+    public static readonly Color Save = Hex(0x00FF00);
 
-    /// <summary>#EEF3F8. All text, the countdown, and anything that isn't an outcome.</summary>
+    /// <summary>#EEF3F8. All text, the countdown, the cage frame on the readout, and anything
+    /// that isn't an outcome.</summary>
     public static readonly Color Chalk = Hex(0xEEF3F8);
 
     /// <summary>#6E7A86. Dim structure (quadrant crosshair, secondary labels). Shows as a faint
