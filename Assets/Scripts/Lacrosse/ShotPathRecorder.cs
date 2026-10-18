@@ -1,0 +1,229 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// Records the flight path of every shot in a session (Plans/Current/Shot_Path_Tracking_Plan.md).
+/// Attach to the same GameObject as GoalDetector (and RandomLauncher / ShotHeatmapRecorder, if
+/// present) — the ball. Display lives in ShotPathVisualizer, which subscribes to
+/// <see cref="OnPathsReady"/> / <see cref="OnPathsCleared"/>.
+///
+/// Same display window as ShotHeatmapRecorder: paths are handed out once a full session ends
+/// (RandomLauncher.OnSessionEnded) and cleared the moment the next one starts
+/// (RandomLauncher.OnSessionStarted). Without a RandomLauncher, paths are still recorded but
+/// only shown/cleared manually via ShowPaths()/ClearPaths().
+///
+/// Each path runs from the launch point to where the shot ended: the gate-plane crossing for a
+/// goal or miss (the same point as that shot's heatmap dot), or the stick for a save. A save also
+/// stores a separate projected tail from the stick to the gate plane. Nothing after the end is
+/// recorded (the project has no bounce shots).
+/// </summary>
+[RequireComponent(typeof(GoalDetector))]
+public class ShotPathRecorder : MonoBehaviour
+{
+    public enum PathOutcome { Save, Goal, Miss }
+
+    public struct ShotPath
+    {
+        /// <summary>Launch → end (gate plane, or the stick for a save). World space.</summary>
+        public Vector3[] points;
+
+        /// <summary>Saves only: stick → gate plane. Empty otherwise.</summary>
+        public Vector3[] projectedTail;
+
+        public PathOutcome outcome;
+
+        /// <summary>Quadrant of the gate-plane point (where the shot crossed, or was headed).</summary>
+        public Quadrant quadrant;
+    }
+
+    [Header("Sampling")]
+    [Tooltip("A new point is only added once the ball has moved at least this far (meters) " +
+             "from the last one.")]
+    [Min(0f)]
+    public float minPointSpacing = 0.02f;
+
+    [Tooltip("Safety cap on points per shot. Once reached, only the final end point is still added.")]
+    [Min(2)]
+    public int maxPointsPerShot = 256;
+
+    [Tooltip("Log each finished path's point count (useful while tuning minPointSpacing).")]
+    public bool logPointCounts = true;
+
+    // ── Private ───────────────────────────────────────────────────
+
+    private GoalDetector _goalDetector;
+    private RandomLauncher _launcher;
+
+    private readonly List<ShotPath> _paths = new List<ShotPath>();
+    private readonly List<Vector3> _current = new List<Vector3>();
+    private bool _recording = false;
+
+    // ── Public API ────────────────────────────────────────────────
+
+    /// <summary>Finished paths for the current (or just-ended) session, in shot order.</summary>
+    public IReadOnlyList<ShotPath> Paths => _paths;
+
+    /// <summary>Fired by ShowPaths() — at session end when a RandomLauncher is present.</summary>
+    public event Action<IReadOnlyList<ShotPath>> OnPathsReady;
+
+    /// <summary>Fired by ClearPaths() — at session start when a RandomLauncher is present.</summary>
+    public event Action OnPathsCleared;
+
+    // ── Lifecycle ─────────────────────────────────────────────────
+
+    void Awake()
+    {
+        _goalDetector = GetComponent<GoalDetector>();
+        _launcher = GetComponent<RandomLauncher>();
+    }
+
+    void OnEnable()
+    {
+        _goalDetector.OnShotLaunched += HandleShotLaunched;
+        _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        _goalDetector.OnSaved += HandleSaved;
+
+        if (_launcher != null)
+        {
+            _launcher.OnSessionStarted += HandleSessionStarted;
+            _launcher.OnSessionEnded += HandleSessionEnded;
+        }
+    }
+
+    void OnDisable()
+    {
+        _goalDetector.OnShotLaunched -= HandleShotLaunched;
+        _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        _goalDetector.OnSaved -= HandleSaved;
+
+        if (_launcher != null)
+        {
+            _launcher.OnSessionStarted -= HandleSessionStarted;
+            _launcher.OnSessionEnded -= HandleSessionEnded;
+        }
+    }
+
+    /// <summary>LateUpdate rather than Update: by now GoalDetector.Update has already run this
+    /// frame, so on the crossing frame ShotInFlight is false and the post-crossing position is
+    /// never sampled — the path ends exactly on the event's gate-plane point. A save is
+    /// registered from a physics trigger, which also runs before this.</summary>
+    void LateUpdate()
+    {
+        if (!_recording || !_goalDetector.ShotInFlight) return;
+
+        AddPoint(transform.position);
+    }
+
+    // ── Recording ────────────────────────────────────────────────
+
+    private void HandleShotLaunched()
+    {
+        // A shot that never ended (e.g. relaunched mid-flight) is dropped rather than kept half-done.
+        _current.Clear();
+        _recording = true;
+
+        // RandomLauncher moves the ball to its launch origin before calling OnBallLaunched().
+        _current.Add(transform.position);
+    }
+
+    private void HandlePlaneCrossed(Vector3 crossingPos)
+    {
+        if (!_recording) return;
+
+        // GoalScored is set before OnPlaneCrossed fires, so it reflects this exact crossing.
+        PathOutcome outcome = _goalDetector.GoalScored ? PathOutcome.Goal : PathOutcome.Miss;
+        FinishPath(crossingPos, Array.Empty<Vector3>(), crossingPos, outcome);
+    }
+
+    /// <summary>OnSaved and OnPlaneCrossed are mutually exclusive per shot, so each path is
+    /// finished once.</summary>
+    private void HandleSaved(Vector3 projectedPos)
+    {
+        if (!_recording) return;
+
+        Vector3 contact = _goalDetector.SaveContactPosition;
+        Vector3[] tail = (projectedPos - contact).sqrMagnitude > 0.0001f
+            ? new[] { contact, projectedPos }
+            : Array.Empty<Vector3>();
+
+        FinishPath(contact, tail, projectedPos, PathOutcome.Save);
+    }
+
+    private void AddPoint(Vector3 point)
+    {
+        if (_current.Count >= maxPointsPerShot) return;
+
+        Vector3 last = _current[_current.Count - 1];
+        if ((point - last).sqrMagnitude < minPointSpacing * minPointSpacing) return;
+
+        _current.Add(point);
+    }
+
+    private void FinishPath(Vector3 endPoint, Vector3[] tail, Vector3 gatePlanePos, PathOutcome outcome)
+    {
+        _recording = false;
+
+        // The end point always goes in, replacing the last sample if the cap was hit.
+        if (_current.Count >= maxPointsPerShot)
+            _current[_current.Count - 1] = endPoint;
+        else
+            _current.Add(endPoint);
+
+        var path = new ShotPath
+        {
+            points = _current.ToArray(),
+            projectedTail = tail,
+            outcome = outcome,
+            quadrant = QuadrantOf(gatePlanePos),
+        };
+        _paths.Add(path);
+        _current.Clear();
+
+        if (logPointCounts)
+            Debug.Log($"[ShotPathRecorder] Path #{_paths.Count}: {path.points.Length} points, " +
+                      $"{outcome}, {path.quadrant}, ends at ({endPoint.x:F2}, {endPoint.y:F2}, {endPoint.z:F2})");
+    }
+
+    /// <summary>Normalizes the gate-plane point the same way ShotHeatmapRecorder does, so a path's
+    /// quadrant always matches its heatmap dot's.</summary>
+    private Quadrant QuadrantOf(Vector3 gatePlanePos)
+    {
+        Vector3 center = _goalDetector.goalGateCenter;
+        Vector2 half = _goalDetector.goalGateHalfSize;
+
+        float nx = Mathf.Clamp((gatePlanePos.x - center.x) / half.x, -1f, 1f);
+        float ny = Mathf.Clamp((gatePlanePos.y - center.y) / half.y, -1f, 1f);
+
+        return QuadrantMath.BucketFromNormalized(new Vector2(nx, ny));
+    }
+
+    private void HandleSessionStarted()
+    {
+        ClearPaths();
+    }
+
+    private void HandleSessionEnded()
+    {
+        ShowPaths();
+    }
+
+    // ── Public API ────────────────────────────────────────────────
+
+    /// <summary>Hands the recorded paths to listeners (OnPathsReady).</summary>
+    public void ShowPaths()
+    {
+        OnPathsReady?.Invoke(_paths);
+    }
+
+    /// <summary>Clears all recorded paths (and any shot being recorded) and tells listeners to
+    /// hide them (OnPathsCleared).</summary>
+    public void ClearPaths()
+    {
+        _paths.Clear();
+        _current.Clear();
+        _recording = false;
+
+        OnPathsCleared?.Invoke();
+    }
+}
