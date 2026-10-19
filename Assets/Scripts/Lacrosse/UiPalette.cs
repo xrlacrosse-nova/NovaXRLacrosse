@@ -1,9 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// The one place UI colors live (see Plans/Current/UI_Design_Plan.md, "Color: the cage, not a
-/// scoreboard"). Magic Leap 2 is an additive display, so every token is bright: dark values
-/// render as transparent.
+/// The one place UI colors live (see Plans/Past/UI_Design_Plan.md). Magic Leap 2 is an
+/// additive display, so every token is bright: dark values render as transparent.
 ///
 /// Color is data: Goal and Save mean goal and save everywhere, and are never used for
 /// decoration. Red/green is hard to tell apart for some color-vision deficiencies, so shape
