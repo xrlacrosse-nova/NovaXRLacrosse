@@ -12,8 +12,8 @@ using UnityEngine.Rendering;
 ///
 /// It catches up in OnEnable (draws or clears to match the recorder), so it still works if its
 /// own GameObject was inactive when an event fired — but an always-active GameObject (e.g. the
-/// ball) is the intended spot. The streaks themselves live under a separate root (lineParent, or
-/// a runtime "ShotPaths3D" object at the scene root), never under the ball, which keeps moving.
+/// ball) is the intended spot. The streaks themselves live under a runtime "ShotPaths3D" object
+/// at the scene root, never under the ball, which keeps moving.
 ///
 /// Streaks taper and fade toward the launch end, so the pile-up near the shooter stays readable.
 /// Color is the outcome (UiPalette tokens, matching the heatmap), and the end marker backs it up
@@ -26,11 +26,6 @@ public class ShotPathVisualizer : MonoBehaviour
     [Header("Source")]
     [Tooltip("The recorder on the ball. Leave empty to find one in the scene.")]
     public ShotPathRecorder recorder;
-
-    [Header("Placement")]
-    [Tooltip("Optional parent for the streaks (e.g. WorldOrigin). Leave empty to create a " +
-             "\"ShotPaths3D\" object at the scene root. Don't use the ball — it moves.")]
-    public Transform lineParent;
 
     [Header("Lines")]
     [Tooltip("Optional material for the streaks and markers. It must use vertex color for the " +
@@ -122,7 +117,7 @@ public class ShotPathVisualizer : MonoBehaviour
             }
         }
 
-        _root = lineParent != null ? lineParent : new GameObject("ShotPaths3D").transform;
+        _root = new GameObject("ShotPaths3D").transform;
     }
 
     void OnEnable()
@@ -154,8 +149,7 @@ public class ShotPathVisualizer : MonoBehaviour
         if (_ownsMaterial && _material != null)
             Destroy(_material);
 
-        // Only the root this created; a lineParent belongs to the scene.
-        if (_root != null && lineParent == null)
+        if (_root != null)
             Destroy(_root.gameObject);
     }
 
