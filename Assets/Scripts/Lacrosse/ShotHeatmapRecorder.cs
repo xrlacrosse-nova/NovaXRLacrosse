@@ -301,8 +301,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
             string Corner(Quadrant q)
             {
                 int index = (int)q;
-                string tally = totals[index] == 0 ? "no shots" : $"{saves[index]}/{totals[index]}";
-                return $"{PositionName(q)} ({CornerName(q)}): {tally}";
+                return $"{PositionName(q)} ({CornerName(q)}): {saves[index]}/{totals[index]}";
             }
 
             quadrantBreakdownText.text =
