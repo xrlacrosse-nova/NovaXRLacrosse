@@ -1208,6 +1208,7 @@ GameObject:
   - component: {fileID: 866954163}
   - component: {fileID: 866954164}
   - component: {fileID: 866954165}
+  - component: {fileID: 866954166}
   m_Layer: 0
   m_Name: LacrosseBall
   m_TagString: Untagged
@@ -1446,6 +1447,22 @@ MonoBehaviour:
   goalAmplitude: 0.9
   goalDuration: 0.35
   logImpulses: 1
+--- !u!114 &866954166
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866954152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6e58483abfa68aa4a91e01ce00c766d9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShotPathRecorder
+  minPointSpacing: 0.02
+  maxPointsPerShot: 256
+  maxPaths: 64
+  logPointCounts: 1
 --- !u!4 &934791496 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,
@@ -2066,6 +2083,7 @@ RectTransform:
   - {fileID: 1226416893}
   - {fileID: 383481017}
   - {fileID: 1636759486}
+  - {fileID: 1749753966}
   m_Father: {fileID: 2122501376}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3838,6 +3856,41 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1749753965
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1749753966}
+  m_Layer: 5
+  m_Name: ShotPathInset
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1749753966
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1749753965}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1587744146}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 600, y: 250}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!4 &1835460686 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -324020059923274528, guid: 37a094fb39caa7441b08f42bdfa38a14,
