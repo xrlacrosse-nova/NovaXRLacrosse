@@ -1477,22 +1477,19 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShotPathVisualizer
   recorder: {fileID: 0}
-  container: {fileID: 1749753966}
-  padding: 8
-  gateOnRight: 1
+  lineParent: {fileID: 0}
   lineMaterial: {fileID: 0}
-  lineWidth: 10
+  streakWidth: 0.02
   launchWidthFraction: 0.2
   launchAlpha: 0.1
-  tailWidth: 3
+  tailStreakWidth: 0.006
   tailAlpha: 0.5
-  capSize: 26
-  crossThickness: 6
+  saveMarkerSize: 0.05
+  goalMarkerSize: 0.08
+  goalMarkerThickness: 0.012
   saveColor: {r: 0, g: 1, b: 0, a: 1}
   scoreColor: {r: 1, g: 0, b: 0, a: 1}
   missColor: {r: 0.43137255, g: 0.47843137, b: 0.5254902, a: 1}
-  drawGateMarker: 1
-  gateMarkerWidth: 6
 --- !u!4 &934791496 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 6487038207068198745, guid: 2ad7d02c3ee2a447abc9de300646685d,
@@ -2113,7 +2110,6 @@ RectTransform:
   - {fileID: 1226416893}
   - {fileID: 383481017}
   - {fileID: 1636759486}
-  - {fileID: 1749753966}
   m_Father: {fileID: 2122501376}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3886,41 +3882,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1749753965
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1749753966}
-  m_Layer: 5
-  m_Name: ShotPathInset
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!224 &1749753966
-RectTransform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1749753965}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1587744146}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 600, y: 250}
-  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!4 &1835460686 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -324020059923274528, guid: 37a094fb39caa7441b08f42bdfa38a14,
