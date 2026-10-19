@@ -53,8 +53,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
     public TextMeshProUGUI[] cornerLabels = new TextMeshProUGUI[4];
 
     [Tooltip("Fallback only: used when headlineText is unassigned. Gets the headline plus all four " +
-             "corners, each as position name, goalie term and tally, e.g. 'Top right (Stick high): " +
-             "0/1'. Leave unassigned to disable.")]
+             "corners, each as position name and tally, e.g. 'Top right: 0/1'. Leave unassigned " +
+             "to disable.")]
     public TextMeshProUGUI quadrantBreakdownText;
 
     [Tooltip("Prefab instantiated for each saved shot — a small UI Image (e.g. a circle sprite).")]
@@ -297,11 +297,11 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         if (headlineText == null && quadrantBreakdownText != null)
         {
-            // Beginner name first (where on the goal), goalie term in brackets, then the tally.
+            // Plain position name (where on the goal), then the tally.
             string Corner(Quadrant q)
             {
                 int index = (int)q;
-                return $"{PositionName(q)} ({CornerName(q)}): {saves[index]}/{totals[index]}";
+                return $"{PositionName(q)}: {saves[index]}/{totals[index]}";
             }
 
             quadrantBreakdownText.text =
