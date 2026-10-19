@@ -159,10 +159,11 @@ public class ShotHeatmapRecorder : MonoBehaviour
         Vector3 center = _goalDetector.goalGateCenter;
         Vector2 half = _goalDetector.goalGateHalfSize;
 
-        float nx = Mathf.Clamp((gatePlanePos.x - center.x) / half.x, -1f, 1f);
-        float ny = Mathf.Clamp((gatePlanePos.y - center.y) / half.y, -1f, 1f);
+        Vector2 normalized = QuadrantMath.NormalizeToGate(center, half, gatePlanePos);
+        float nx = normalized.x;
+        float ny = normalized.y;
 
-        _points.Add(new Vector2(nx, ny));
+        _points.Add(normalized);
         _scored.Add(scored);
 
         Debug.Log($"[ShotHeatmapRecorder] Recorded shot #{_points.Count}: raw=({gatePlanePos.x:F3}, {gatePlanePos.y:F3}) " +

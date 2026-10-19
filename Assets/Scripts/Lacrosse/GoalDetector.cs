@@ -40,13 +40,12 @@ public class GoalDetector : MonoBehaviour
 
     // ── state ─────────────────────────────────────────────────────
 
-    private Rigidbody _rb;
     private bool _active = false;   // true after OnBallLaunched()
     private bool _goalScored = false;
     private bool _saved = false;
     private bool _resolved = false; // the shot has ended: goal, miss, or save
     private float _displayTimer = 0f;
-    private float _prevZ;
+    private Vector3 _prevPos;       // ball position at the end of the last Update
 
     // what the popup currently says (set when a goal or save happens)
     private string _popupText = "GOAL!";
@@ -88,11 +87,6 @@ public class GoalDetector : MonoBehaviour
 
     // ── lifecycle ─────────────────────────────────────────────────
 
-    void Awake()
-    {
-        _rb = GetComponent<Rigidbody>();
-    }
-
     void Update()
     {
         // Tick the GOAL! / SAVE! display countdown
@@ -103,11 +97,13 @@ public class GoalDetector : MonoBehaviour
 
         if (!_active || _resolved) return;
 
-        float currentZ = transform.position.z;
+        Vector3 currentPos = transform.position;
+        float prevZ = _prevPos.z;
+        float currentZ = currentPos.z;
 
         // Did the ball cross the gate plane this frame?
-        bool crossedPlane = (_prevZ > goalGateCenter.z && currentZ <= goalGateCenter.z)
-                         || (_prevZ < goalGateCenter.z && currentZ >= goalGateCenter.z);
+        bool crossedPlane = (prevZ > goalGateCenter.z && currentZ <= goalGateCenter.z)
+                         || (prevZ < goalGateCenter.z && currentZ >= goalGateCenter.z);
 
         if (crossedPlane)
         {
@@ -115,16 +111,11 @@ public class GoalDetector : MonoBehaviour
             // the plane can't fire OnPlaneCrossed a second time.
             _resolved = true;
 
-            // Interpolate back to find the exact crossing position
-            float t = Mathf.InverseLerp(_prevZ, currentZ, goalGateCenter.z);
-
-#if UNITY_6000_0_OR_NEWER
-            Vector3 velocity = _rb.linearVelocity;
-#else
-            Vector3 velocity = _rb.velocity;
-#endif
-            Vector3 prevPos = transform.position - velocity * Time.deltaTime;
-            Vector3 crossingPos = Vector3.Lerp(prevPos, transform.position, t);
+            // Interpolate between the real last and current positions to find the exact
+            // crossing. (Not velocity * deltaTime: a frame can hold zero, one or several
+            // physics steps, so that guess put the point off the plane.)
+            float t = Mathf.InverseLerp(prevZ, currentZ, goalGateCenter.z);
+            Vector3 crossingPos = Vector3.Lerp(_prevPos, currentPos, t);
 
             float dx = Mathf.Abs(crossingPos.x - goalGateCenter.x);
             float dy = Mathf.Abs(crossingPos.y - goalGateCenter.y);
@@ -150,7 +141,7 @@ public class GoalDetector : MonoBehaviour
             OnPlaneCrossed?.Invoke(crossingPos);
         }
 
-        _prevZ = currentZ;
+        _prevPos = currentPos;
     }
 
     // ── public API (called by BallLauncher) ───────────────────────
@@ -162,7 +153,7 @@ public class GoalDetector : MonoBehaviour
         _goalScored = false;
         _saved = false;
         _resolved = false;
-        _prevZ = transform.position.z;
+        _prevPos = transform.position;
 
         OnShotLaunched?.Invoke();
     }

@@ -16,7 +16,9 @@ using UnityEngine;
 /// Each path runs from the launch point to where the shot ended: the gate-plane crossing for a
 /// goal or miss (the same point as that shot's heatmap dot), or the stick for a save. A save also
 /// stores a separate projected tail from the stick to the gate plane. Nothing after the end is
-/// recorded (the project has no bounce shots).
+/// recorded (the project has no bounce shots). A shot that never ends that way (e.g. it deflects
+/// off the goalie's body and despawns) is dropped with a warning, so a session can show fewer
+/// paths than shots fired.
 /// </summary>
 [RequireComponent(typeof(GoalDetector))]
 public class ShotPathRecorder : MonoBehaviour
@@ -47,6 +49,11 @@ public class ShotPathRecorder : MonoBehaviour
     [Min(2)]
     public int maxPointsPerShot = 256;
 
+    [Tooltip("Most paths kept at once; the oldest is dropped past this. Sessions clear the list " +
+             "anyway — this bounds it when there's no RandomLauncher to do that.")]
+    [Min(1)]
+    public int maxPaths = 64;
+
     [Tooltip("Log each finished path's point count (useful while tuning minPointSpacing).")]
     public bool logPointCounts = true;
 
@@ -54,15 +61,21 @@ public class ShotPathRecorder : MonoBehaviour
 
     private GoalDetector _goalDetector;
     private RandomLauncher _launcher;
+    private FloorBoundary _floorBoundary;
 
     private readonly List<ShotPath> _paths = new List<ShotPath>();
     private readonly List<Vector3> _current = new List<Vector3>();
     private bool _recording = false;
+    private bool _pathsShown = false;
 
     // ── Public API ────────────────────────────────────────────────
 
     /// <summary>Finished paths for the current (or just-ended) session, in shot order.</summary>
     public IReadOnlyList<ShotPath> Paths => _paths;
+
+    /// <summary>True between ShowPaths() and the next ClearPaths(), so a display that becomes
+    /// active late (and missed OnPathsReady) can still draw them.</summary>
+    public bool PathsShown => _pathsShown;
 
     /// <summary>Fired by ShowPaths() — at session end when a RandomLauncher is present.</summary>
     public event Action<IReadOnlyList<ShotPath>> OnPathsReady;
@@ -76,6 +89,7 @@ public class ShotPathRecorder : MonoBehaviour
     {
         _goalDetector = GetComponent<GoalDetector>();
         _launcher = GetComponent<RandomLauncher>();
+        _floorBoundary = GetComponent<FloorBoundary>();
     }
 
     void OnEnable()
@@ -83,6 +97,9 @@ public class ShotPathRecorder : MonoBehaviour
         _goalDetector.OnShotLaunched += HandleShotLaunched;
         _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
         _goalDetector.OnSaved += HandleSaved;
+
+        if (_floorBoundary != null)
+            _floorBoundary.OnDespawned += HandleDespawned;
 
         if (_launcher != null)
         {
@@ -96,6 +113,9 @@ public class ShotPathRecorder : MonoBehaviour
         _goalDetector.OnShotLaunched -= HandleShotLaunched;
         _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
         _goalDetector.OnSaved -= HandleSaved;
+
+        if (_floorBoundary != null)
+            _floorBoundary.OnDespawned -= HandleDespawned;
 
         if (_launcher != null)
         {
@@ -120,7 +140,7 @@ public class ShotPathRecorder : MonoBehaviour
     private void HandleShotLaunched()
     {
         // A shot that never ended (e.g. relaunched mid-flight) is dropped rather than kept half-done.
-        _current.Clear();
+        AbandonOpenPath("a new shot was launched");
         _recording = true;
 
         // RandomLauncher moves the ball to its launch origin before calling OnBallLaunched().
@@ -150,6 +170,25 @@ public class ShotPathRecorder : MonoBehaviour
         FinishPath(contact, tail, projectedPos, PathOutcome.Save);
     }
 
+    /// <summary>The ball despawned with its shot still open: it never crossed the gate plane
+    /// and wasn't saved (e.g. it deflected off the goalie's body and dropped). Stop sampling
+    /// now instead of recording it bouncing around until the next launch.</summary>
+    private void HandleDespawned()
+    {
+        AbandonOpenPath("the ball despawned before crossing the gate plane or being saved");
+    }
+
+    /// <summary>Drops the shot being recorded, if any, with a warning — the session will show
+    /// one fewer path than shots fired, and this says why.</summary>
+    private void AbandonOpenPath(string reason)
+    {
+        if (_recording)
+            Debug.LogWarning($"[ShotPathRecorder] Dropped an unfinished path ({_current.Count} points): {reason}.");
+
+        _recording = false;
+        _current.Clear();
+    }
+
     private void AddPoint(Vector3 point)
     {
         if (_current.Count >= maxPointsPerShot) return;
@@ -177,6 +216,8 @@ public class ShotPathRecorder : MonoBehaviour
             outcome = outcome,
             quadrant = QuadrantOf(gatePlanePos),
         };
+        if (_paths.Count >= maxPaths)
+            _paths.RemoveAt(0);
         _paths.Add(path);
         _current.Clear();
 
@@ -185,17 +226,14 @@ public class ShotPathRecorder : MonoBehaviour
                       $"{outcome}, {path.quadrant}, ends at ({endPoint.x:F2}, {endPoint.y:F2}, {endPoint.z:F2})");
     }
 
-    /// <summary>Normalizes the gate-plane point the same way ShotHeatmapRecorder does, so a path's
-    /// quadrant always matches its heatmap dot's.</summary>
+    /// <summary>Same normalization as ShotHeatmapRecorder (QuadrantMath.NormalizeToGate), so a
+    /// path's quadrant always matches its heatmap dot's.</summary>
     private Quadrant QuadrantOf(Vector3 gatePlanePos)
     {
-        Vector3 center = _goalDetector.goalGateCenter;
-        Vector2 half = _goalDetector.goalGateHalfSize;
+        Vector2 normalized = QuadrantMath.NormalizeToGate(
+            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, gatePlanePos);
 
-        float nx = Mathf.Clamp((gatePlanePos.x - center.x) / half.x, -1f, 1f);
-        float ny = Mathf.Clamp((gatePlanePos.y - center.y) / half.y, -1f, 1f);
-
-        return QuadrantMath.BucketFromNormalized(new Vector2(nx, ny));
+        return QuadrantMath.BucketFromNormalized(normalized);
     }
 
     private void HandleSessionStarted()
@@ -205,6 +243,9 @@ public class ShotPathRecorder : MonoBehaviour
 
     private void HandleSessionEnded()
     {
+        // Covers the last shot when RandomLauncher's despawn handler (which ends the session)
+        // runs before HandleDespawned.
+        AbandonOpenPath("the session ended before the shot finished");
         ShowPaths();
     }
 
@@ -213,6 +254,7 @@ public class ShotPathRecorder : MonoBehaviour
     /// <summary>Hands the recorded paths to listeners (OnPathsReady).</summary>
     public void ShowPaths()
     {
+        _pathsShown = true;
         OnPathsReady?.Invoke(_paths);
     }
 
@@ -223,6 +265,7 @@ public class ShotPathRecorder : MonoBehaviour
         _paths.Clear();
         _current.Clear();
         _recording = false;
+        _pathsShown = false;
 
         OnPathsCleared?.Invoke();
     }
