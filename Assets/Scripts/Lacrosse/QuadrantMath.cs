@@ -54,6 +54,18 @@ public static class QuadrantMath
     }
 
     /// <summary>
+    /// A gate-plane world point as a normalized gate position: each axis in [-1, 1], 0 at the
+    /// gate center, ±1 at the edges (clamped, so shots wide of the cage sit on the edge).
+    /// Used by ShotHeatmapRecorder and ShotPathRecorder, so their quadrants always agree.
+    /// </summary>
+    public static Vector2 NormalizeToGate(Vector3 center, Vector2 half, Vector3 gatePlanePos)
+    {
+        return new Vector2(
+            Mathf.Clamp((gatePlanePos.x - center.x) / half.x, -1f, 1f),
+            Mathf.Clamp((gatePlanePos.y - center.y) / half.y, -1f, 1f));
+    }
+
+    /// <summary>
     /// Which quadrant a normalized gate-plane point (each axis in [-1, 1], as recorded by
     /// ShotHeatmapRecorder) falls into. The inverse of the sign convention SignX/SignY use for aiming.
     /// </summary>
