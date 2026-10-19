@@ -44,10 +44,13 @@ until the next session starts. Nothing is shown during play.
   (`CrowdAmbience`).
 - **Results after the session:**
   - `ShotHeatmapRecorder` shows where each shot crossed the goal, with saves as dots, goals
-    as an ×, and save counts per corner.
+    as an ×, and save counts per corner in plain words (`Shot Heatmap: 6 of 8 saved`,
+    `Top left: 2/2`).
   - `ShotPathRecorder` / `ShotPathVisualizer` show each shot's flight path as a 3D streak
-    in the world, along the route the ball actually flew. *(New on `ball-trail`; needs the
-    Editor wiring in `Plans/Current/Shot_Path_Tracking_Plan.md`.)*
+    in the world, along the route the ball actually flew.
+- **Field markings:** white men's-field lines on the floor around the goal (goal line, goal
+  line extended, crease, goalie arc and restraining line), built in the scene under
+  `FieldMarkings`. Visual only; no script.
 - **Shooter avatar:** `LacrosseStickGrip` keeps the shooter's stick in both hands through the
   shooting animation.
 
