@@ -53,7 +53,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
     public TextMeshProUGUI[] cornerLabels = new TextMeshProUGUI[4];
 
     [Tooltip("Fallback only: used when headlineText is unassigned. Gets the headline plus all four " +
-             "corner counts as plain lines. Leave unassigned to disable.")]
+             "corners, each as position name, goalie term and tally, e.g. 'Top right (Stick high): " +
+             "0/1'. Leave unassigned to disable.")]
     public TextMeshProUGUI quadrantBreakdownText;
 
     [Tooltip("Prefab instantiated for each saved shot — a small UI Image (e.g. a circle sprite).")]
@@ -296,12 +297,30 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         if (headlineText == null && quadrantBreakdownText != null)
         {
+            // Beginner name first (where on the goal), goalie term in brackets, then the tally.
+            string Corner(Quadrant q)
+            {
+                int index = (int)q;
+                string tally = totals[index] == 0 ? "no shots" : $"{saves[index]}/{totals[index]}";
+                return $"{PositionName(q)} ({CornerName(q)}): {tally}";
+            }
+
             quadrantBreakdownText.text =
-                $"{headline}\n" +
-                $"{CornerName(Quadrant.TopLeft)} {Count(Quadrant.TopLeft)}, " +
-                $"{CornerName(Quadrant.TopRight)} {Count(Quadrant.TopRight)}\n" +
-                $"{CornerName(Quadrant.BottomLeft)} {Count(Quadrant.BottomLeft)}, " +
-                $"{CornerName(Quadrant.BottomRight)} {Count(Quadrant.BottomRight)}";
+                $"Shot Heatmap: {headline}\n" +
+                $"{Corner(Quadrant.TopLeft)}  ·  {Corner(Quadrant.TopRight)}\n" +
+                $"{Corner(Quadrant.BottomLeft)}  ·  {Corner(Quadrant.BottomRight)}";
+        }
+    }
+
+    /// <summary>Plain position name for a corner, as the goalie sees the goal.</summary>
+    private static string PositionName(Quadrant quadrant)
+    {
+        switch (quadrant)
+        {
+            case Quadrant.TopLeft: return "Top left";
+            case Quadrant.TopRight: return "Top right";
+            case Quadrant.BottomLeft: return "Bottom left";
+            default: return "Bottom right";
         }
     }
 
