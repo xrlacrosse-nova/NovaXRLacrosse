@@ -8,8 +8,8 @@ using UnityEngine;
 /// two hands:
 ///   - the Bottom Grip Point on the shaft is pinned to the right (butt-end) palm,
 ///   - the shaft is aimed through the left (top) palm,
-///   - the roll around the shaft comes from a reference axis, so the pocket faces a stable
-///     direction.
+///   - the roll around the shaft comes from a reference axis (the top hand, so the pocket
+///     turns with the wrist).
 ///
 /// The stick is NOT reparented. Its pose is written in world space, so the OBJ's pivot and any
 /// scale on the stick or the avatar's bones don't matter.
@@ -23,9 +23,11 @@ using UnityEngine;
 ///    hand bone into "Left Hand Bone" (top hand).
 /// 3. With the stick selected, check the gizmos: the yellow line should run down the middle of
 ///    the shaft, and the green sphere should sit near the butt end.
-/// 4. Enter Play mode and pause. Disable this component, move/rotate the stick in the Scene
-///    view until it sits in both hands, then right-click this component -> Capture Grip From
-///    Current Pose. Copy Component, exit Play mode, Paste Component Values, re-enable.
+/// 4. Drag the left hand bone into "Roll Reference" too.
+/// 5. Enter Play mode and pause. Disable this component, move/rotate the stick in the Scene
+///    view until it sits in both hands with the pocket facing the right way, then right-click
+///    this component -> Capture Grip From Current Pose. Copy Component, exit Play mode, Paste
+///    Component Values, re-enable.
 /// </summary>
 public class LacrosseStickGrip : MonoBehaviour
 {
@@ -61,11 +63,12 @@ public class LacrosseStickGrip : MonoBehaviour
 
     [Header("Roll Around the Shaft")]
     [Tooltip("The pocket faces along Roll Reference Axis of this Transform. Leave empty to use " +
-             "world space. The avatar root is a good choice, since world up is unreliable when " +
-             "the stick is overhead.")]
+             "world space. Use the top (left) hand bone so the pocket turns with the wrist; a " +
+             "fixed direction like the avatar root flips the pocket when the shaft points along it.")]
     public Transform rollReference;
 
-    [Tooltip("Axis (in Roll Reference's local space, or world space if it's empty) the pocket faces.")]
+    [Tooltip("Axis (in Roll Reference's local space, or world space if it's empty) the pocket " +
+             "faces. Capture Grip From Current Pose sets this.")]
     public Vector3 rollReferenceAxis = Vector3.forward;
 
     [Tooltip("Extra spin around the shaft, in degrees, applied after the roll reference.")]
@@ -145,14 +148,20 @@ public class LacrosseStickGrip : MonoBehaviour
         Vector3 onShaft = grip + Vector3.Project(leftHandBone.position - grip, shaftDir);
         leftPalmOffset = Quaternion.Inverse(leftHandBone.rotation) * (onShaft - leftHandBone.position);
 
-        // Roll = angle from the reference direction to where the pocket faces now.
+        // Roll = where the pocket faces now, stored in Roll Reference's space, so the pocket
+        // turns with the reference (with the top hand, it follows the wrist).
         Vector3 pocketNow = Vector3.ProjectOnPlane(transform.TransformDirection(pocketAxisLocal), shaftDir);
-        Vector3 pocketRef = Vector3.ProjectOnPlane(RollReferenceDirection(), shaftDir);
-        if (pocketNow.sqrMagnitude > 0.0001f && pocketRef.sqrMagnitude > 0.0001f)
-            rollOffset = Vector3.SignedAngle(pocketRef, pocketNow, shaftDir);
+        if (pocketNow.sqrMagnitude > 0.0001f)
+        {
+            pocketNow.Normalize();
+            rollReferenceAxis = rollReference != null
+                ? rollReference.InverseTransformDirection(pocketNow)
+                : pocketNow;
+            rollOffset = 0f;
+        }
 
         Debug.Log($"[LacrosseStickGrip] Captured: Right Palm Offset {rightPalmOffset:F3}, " +
-                  $"Left Palm Offset {leftPalmOffset:F3}, Roll Offset {rollOffset:F1}. " +
+                  $"Left Palm Offset {leftPalmOffset:F3}, Roll Reference Axis {rollReferenceAxis:F3}. " +
                   "Copy Component now, then Paste Component Values after leaving Play mode.", this);
     }
 
