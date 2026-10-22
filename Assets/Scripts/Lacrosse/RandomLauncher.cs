@@ -451,6 +451,12 @@ public class RandomLauncher : MonoBehaviour
 #endif
             _rb.angularVelocity = Vector3.zero;
 
+            // Teleport through the Rigidbody too. With interpolation on (set in Awake) and
+            // Auto Sync Transforms off, a transform-only move can be overwritten by the
+            // interpolated pose before physics reads it, so the ball would launch from where
+            // the last shot ended (floor, or frozen at the goalie's stick) instead of here.
+            // Setting the transform as well lets OnBallLaunched() read the origin right away.
+            _rb.position = origin;
             transform.position = origin;
 
             _falling = false;
