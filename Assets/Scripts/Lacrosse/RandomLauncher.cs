@@ -67,6 +67,11 @@ public class RandomLauncher : MonoBehaviour
              "slow to reach the target at all.")]
     public float launchSpeed = 18f;
 
+    [Tooltip("Each shot's speed is Launch Speed ± this much (m/s), picked at random, so the goalie " +
+             "can't time a fixed speed. 0 = every shot at Launch Speed. Set by DifficultySelector.")]
+    [Min(0f)]
+    public float launchSpeedVariance = 0f;
+
     [Tooltip("Use Unity's Rigidbody gravity (Physics.gravity) for the whole flight, with the " +
              "launch solved to arc onto the target. Off = straight, gravity-free flight " +
              "with custom gravity only after the goal plane (old behavior).")]
@@ -117,6 +122,10 @@ public class RandomLauncher : MonoBehaviour
     [Header("UI (World Space Canvas)")]
     [Tooltip("TextMeshPro label used for GET READY / countdown digits / GO!. Leave unassigned to disable.")]
     public TextMeshProUGUI countdownText;
+
+    [Tooltip("Shown after GET READY in the countdown, e.g. 'College' -> 'GET READY · College'. " +
+             "Empty = plain GET READY. Set by DifficultySelector.")]
+    public string readyLabel = "";
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -457,22 +466,25 @@ public class RandomLauncher : MonoBehaviour
         // With BallFlight, the aim is corrected for drag and spin (Plans/Past/Ball_Flight_Physics_Plan.md).
         // Without gravity there's no spin, and drag only slows the straight shot, so the straight
         // aim stays exact.
+        // Speed varies per shot (launchSpeedVariance) so the goalie can't time a fixed speed.
+        float shotSpeed = Mathf.Max(1f, launchSpeed + Random.Range(-launchSpeedVariance, launchSpeedVariance));
+
         Vector3 launchVelocity;
         Vector3 spin = Vector3.zero;
         float flightTime;
         if (useUnityGravity && _ballFlight != null)
         {
-            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, launchSpeed, out spin);
+            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, shotSpeed, out spin);
             flightTime = 0f;   // set from the prediction below
         }
         else if (useUnityGravity)
         {
             launchVelocity = QuadrantMath.ComputeBallisticLaunchVelocity(
-                origin, target, launchSpeed, Physics.gravity, Time.fixedDeltaTime, out flightTime);
+                origin, target, shotSpeed, Physics.gravity, Time.fixedDeltaTime, out flightTime);
         }
         else
         {
-            launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, launchSpeed);
+            launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, shotSpeed);
             flightTime = Vector3.Distance(origin, target) / Mathf.Max(launchVelocity.magnitude, 0.001f);
         }
 
@@ -574,7 +586,8 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_countdownRemaining > 3f)
         {
-            SetLabel("GET READY", UiPalette.Chalk, 0f, animate: false);
+            string ready = string.IsNullOrEmpty(readyLabel) ? "GET READY" : $"GET READY · {readyLabel}";
+            SetLabel(ready, UiPalette.Chalk, 0f, animate: false);
             return;
         }
 

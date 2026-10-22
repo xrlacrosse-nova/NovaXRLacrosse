@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
@@ -9,11 +10,11 @@ using UnityEngine.UI;
 /// The settings board to the left of the ML Rig (see Plans/Current/Input_Styles_Plan.md),
 /// clicked with the controller ray (ControllerRayPointer) while the controller is out of the
 /// stick mount. Shows one page at a time on the same board:
-///   - Main: PLAYER column with "+ New player".
+///   - Main: PLAYER column with "+ New player", and the DIFFICULTY column (one row per level,
+///     the current one marked) when a DifficultySelector is in the scene.
 ///   - New player: on-screen keyboard and name field. Only shown while naming a player.
-/// The player list, Rename/Delete, difficulty and history rows are added once
-/// PlayerProfileStore and DifficultySelector exist (Player_Session_History_Plan.md,
-/// Difficulty_Progression_Plan.md); until then the board ships without them.
+/// The player list, Rename/Delete and history rows are added once PlayerProfileStore exists
+/// (Player_Session_History_Plan.md); until then the board ships without them.
 ///
 /// Visible at app start and after OnSessionEnded, hidden on OnSessionStarted, so nothing on it
 /// can be clicked (or changed) mid-session.
@@ -57,6 +58,9 @@ public class SettingsPage : MonoBehaviour
     [Tooltip("Leave empty to find the RandomLauncher in the scene.")]
     public RandomLauncher launcher;
 
+    [Tooltip("Leave empty to find the DifficultySelector in the scene. None = no DIFFICULTY column.")]
+    public DifficultySelector difficulty;
+
     /// <summary>Name rules: 1–12 characters, A–Z, 0–9 and space, trimmed.</summary>
     public const int MaxNameLength = 12;
 
@@ -81,6 +85,8 @@ public class SettingsPage : MonoBehaviour
     private RectTransform _newPlayerPage;
     private TextMeshProUGUI _nameField;
     private TextMeshProUGUI _nameMessage;
+    private readonly List<(Difficulty difficulty, RayButton button)> _difficultyRows =
+        new List<(Difficulty, RayButton)>();
 
     private Page _page;
     private readonly StringBuilder _name = new StringBuilder();
@@ -94,6 +100,9 @@ public class SettingsPage : MonoBehaviour
             launcher = FindFirstObjectByType<RandomLauncher>();
         if (launcher == null)
             Debug.LogWarning("[SettingsPage] No RandomLauncher found — the page won't hide during sessions.");
+
+        if (difficulty == null)
+            difficulty = FindFirstObjectByType<DifficultySelector>();
 
         if (board == null)
             board = GetComponentInChildren<Canvas>(true);
@@ -124,6 +133,7 @@ public class SettingsPage : MonoBehaviour
     void Start()
     {
         SetShown(launcher == null || !launcher.IsSessionRunning);
+        RefreshDifficultyRows();
     }
 
     void OnEnable()
@@ -133,6 +143,8 @@ public class SettingsPage : MonoBehaviour
             launcher.OnSessionStarted += HandleSessionStarted;
             launcher.OnSessionEnded += HandleSessionEnded;
         }
+        if (difficulty != null)
+            difficulty.OnDifficultyChanged += HandleDifficultyChanged;
     }
 
     void OnDisable()
@@ -142,6 +154,8 @@ public class SettingsPage : MonoBehaviour
             launcher.OnSessionStarted -= HandleSessionStarted;
             launcher.OnSessionEnded -= HandleSessionEnded;
         }
+        if (difficulty != null)
+            difficulty.OnDifficultyChanged -= HandleDifficultyChanged;
     }
 
     // ── Session events ────────────────────────────────────────────
@@ -149,6 +163,8 @@ public class SettingsPage : MonoBehaviour
     void HandleSessionStarted() => SetShown(false);
 
     void HandleSessionEnded() => SetShown(true);
+
+    void HandleDifficultyChanged(Difficulty _) => RefreshDifficultyRows();
 
     private void SetShown(bool shown)
     {
@@ -228,6 +244,17 @@ public class SettingsPage : MonoBehaviour
         _nameField.text = $"Name: {_name}_";
     }
 
+    // ── Difficulty ────────────────────────────────────────────────
+
+    /// <summary>Marks the selector's current level. Also run at Start and on every change, since
+    /// the selector may load its saved choice after this page is built.</summary>
+    private void RefreshDifficultyRows()
+    {
+        if (difficulty == null) return;
+        foreach (var row in _difficultyRows)
+            row.button.SetSelected(row.difficulty == difficulty.Selected);
+    }
+
     // ── Building ──────────────────────────────────────────────────
 
     /// <summary>A plate behind every page, so the board reads as one panel instead of loose
@@ -271,6 +298,33 @@ public class SettingsPage : MonoBehaviour
 
         CreateButton(_mainPage, "+ New player", new Vector2(gap * 2f, y), new Vector2(columnWidth, keySize),
                      OpenNewPlayer);
+
+        BuildDifficultyColumn(w / 2f + gap, columnWidth);
+    }
+
+    /// <summary>DIFFICULTY column on the right half of the Main page: one pick-one row per level.
+    /// Left out entirely when there's no DifficultySelector, so the page can ship without it.</summary>
+    private void BuildDifficultyColumn(float x, float columnWidth)
+    {
+        if (difficulty == null || difficulty.Levels == null) return;
+
+        float y = gap * 2f;
+        CreateLabel(_mainPage, "DIFFICULTY", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.4f),
+                    UiPalette.Chalk, TextAlignmentOptions.Left);
+        y += fontSize * 1.4f + gap;
+
+        foreach (DifficultyLevel level in difficulty.Levels)
+        {
+            if (level == null) continue;
+
+            Difficulty d = level.difficulty;
+            RayButton button = CreateButton(_mainPage, level.displayName, new Vector2(x, y),
+                                            new Vector2(columnWidth, keySize),
+                                            () => difficulty.SetDifficulty(d), dimWhenIdle: true);
+            button.SetSelected(d == difficulty.Selected);
+            _difficultyRows.Add((d, button));
+            y += keySize + gap;
+        }
     }
 
     private void BuildNewPlayerPage()
@@ -339,9 +393,10 @@ public class SettingsPage : MonoBehaviour
         return page;
     }
 
-    /// <summary>Button at <paramref name="topLeft"/> (canvas units from the board's top-left, y down).</summary>
+    /// <summary>Button at <paramref name="topLeft"/> (canvas units from the board's top-left, y down).
+    /// <paramref name="dimWhenIdle"/> = a pick-one row (dim until hovered or selected).</summary>
     private RayButton CreateButton(RectTransform parent, string text, Vector2 topLeft, Vector2 size,
-                                   UnityAction onPressed)
+                                   UnityAction onPressed, bool dimWhenIdle = false)
     {
         RectTransform rect = CreateRect($"Button {text}", parent);
         PlaceTopLeft(rect, topLeft, size);
@@ -353,6 +408,7 @@ public class SettingsPage : MonoBehaviour
                                             TextAlignmentOptions.Center);
 
         RayButton button = rect.gameObject.AddComponent<RayButton>();
+        button.dimWhenIdle = dimWhenIdle; // before Setup, which draws the idle color
         button.Setup(label, background);
         button.onPressed.AddListener(onPressed);
         return button;

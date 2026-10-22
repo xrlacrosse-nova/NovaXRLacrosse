@@ -267,6 +267,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         string headline = $"{totalSaves} of {_points.Count} saved";
 
+        // The difficulty, on a second line, so screenshots say what level the session was at.
+        if (_launcher != null && !string.IsNullOrEmpty(_launcher.readyLabel))
+            headline += $"\n{_launcher.readyLabel}";
+
         string Count(Quadrant q)
         {
             int index = (int)q;
