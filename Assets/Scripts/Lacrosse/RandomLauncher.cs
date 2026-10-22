@@ -66,17 +66,23 @@ public class RandomLauncher : MonoBehaviour
              "this acts as a minimum — the ball will never be slower than this.")]
     public float launchSpeed = 18f;
 
+    [Tooltip("Use Unity's Rigidbody gravity (Physics.gravity) for the whole flight, with the " +
+             "launch solved to arc onto the target. Off = straight, gravity-free flight " +
+             "with custom gravity only after the goal plane (old behavior).")]
+    public bool useUnityGravity = true;
+
     [Header("Ball Reset")]
     [Tooltip("If true, the ball teleports back to LaunchOrigin and resets GoalDetector state " +
              "each time LaunchBall() is called, so you can test repeatedly in the editor.")]
     public bool autoResetOnLaunch = true;
 
-    [Header("Post-Crossing Falling")]
-    [Tooltip("If true, once the ball crosses the goal plane (make or miss) the launcher will apply " +
-             "custom gravity to make it fall to the floor. Use when Unity's global gravity is turned off.")]
+    [Header("Post-Crossing Falling (only when Use Unity Gravity is off)")]
+    [Tooltip("Only used when Use Unity Gravity is off. If true, once the ball crosses the goal plane " +
+             "(make or miss) the launcher will apply custom gravity to make it fall to the floor.")]
     public bool enableCustomGravityOnGoal = true;
 
-    [Tooltip("Downward acceleration (m/s^2) applied while the ball is falling. ~9.81 mimics Earth gravity.")]
+    [Tooltip("Only used when Use Unity Gravity is off. Downward acceleration (m/s^2) applied while " +
+             "the ball is falling. ~9.81 mimics Earth gravity.")]
     public float customGravity = 9.81f;
 
     [Header("Save")]
@@ -117,7 +123,7 @@ public class RandomLauncher : MonoBehaviour
     private GoalDetector _goalDetector;
     private FloorBoundary _floorBoundary;
 
-    // falling state
+    // falling state (custom gravity after the plane; only when useUnityGravity is off)
     private bool _falling = false;
 
     // session state
@@ -162,6 +168,20 @@ public class RandomLauncher : MonoBehaviour
         _rb = GetComponent<Rigidbody>();
         _goalDetector = GetComponent<GoalDetector>();
         _floorBoundary = GetComponent<FloorBoundary>();
+
+        // The ballistic aim assumes no damping. Interpolation smooths the arc between physics steps.
+#if UNITY_6000_0_OR_NEWER
+        _rb.linearDamping = 0f;
+#else
+        _rb.drag = 0f;
+#endif
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+        if (useUnityGravity && Physics.gravity.sqrMagnitude < 0.001f)
+        {
+            Debug.LogWarning("[RandomLauncher] Use Unity Gravity is on but Physics.gravity is ~zero — shots " +
+                             "will fly straight and the arc aim will be wrong. Check Project Settings → Physics.");
+        }
     }
 
     void OnEnable()
@@ -241,10 +261,11 @@ public class RandomLauncher : MonoBehaviour
     }
 
     /// <summary>Called by GoalDetector whenever this ball crosses the gate plane, make or miss,
-    /// so the ball always has a defined path (falling to the floor) past the plane.</summary>
+    /// so the ball always has a defined path (falling to the floor) past the plane. With Unity
+    /// gravity on, it's already falling; adding custom gravity would double it.</summary>
     private void HandlePlaneCrossed(Vector3 crossingPos)
     {
-        if (enableCustomGravityOnGoal)
+        if (!useUnityGravity && enableCustomGravityOnGoal)
             BeginFalling();
     }
 
@@ -440,10 +461,23 @@ public class RandomLauncher : MonoBehaviour
         _lastQuadrant = quadrant;
 
         // ── 4. Compute launch velocity ───────────────────────────
-        Vector3 launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, launchSpeed);
+        // Gravity turns on only here, with the launch velocity, so the ball can't pick up a
+        // frame of fall while it's being moved to the origin above.
+        Vector3 launchVelocity;
+        float flightTime;
+        if (useUnityGravity)
+        {
+            launchVelocity = QuadrantMath.ComputeBallisticLaunchVelocity(
+                origin, target, launchSpeed, Physics.gravity, Time.fixedDeltaTime, out flightTime);
+        }
+        else
+        {
+            launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, launchSpeed);
+            flightTime = Vector3.Distance(origin, target) / Mathf.Max(launchVelocity.magnitude, 0.001f);
+        }
 
         _rb.isKinematic = false;
-        _rb.useGravity = false;
+        _rb.useGravity = useUnityGravity;
 
         // ── 5. Apply and notify GoalDetector ─────────────────────
 #if UNITY_6000_0_OR_NEWER
@@ -456,9 +490,11 @@ public class RandomLauncher : MonoBehaviour
 
         _goalDetector.OnBallLaunched();
 
+        float speed = launchVelocity.magnitude;
+        float angle = speed > 0.001f ? Mathf.Asin(Mathf.Clamp(launchVelocity.y / speed, -1f, 1f)) * Mathf.Rad2Deg : 0f;
         Debug.Log($"[RandomLauncher] Shot fired → {quadrant} ({aimMode}) | " +
                   $"target ({target.x:F2}, {target.y:F2}, {target.z:F2}) | " +
-                  $"speed {launchVelocity.magnitude:F1} m/s");
+                  $"speed {speed:F1} m/s | {angle:+0.0;-0.0}° | {flightTime:F2} s");
     }
 
     // ── Private helpers ───────────────────────────────────────────
@@ -485,7 +521,8 @@ public class RandomLauncher : MonoBehaviour
     }
 
     /// <summary>
-    /// Enables falling by applying custom gravity inside FixedUpdate.
+    /// Enables falling by applying custom gravity inside FixedUpdate. Only used when
+    /// useUnityGravity is off.
     /// </summary>
     private void BeginFalling()
     {
