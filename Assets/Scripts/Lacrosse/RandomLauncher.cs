@@ -465,13 +465,15 @@ public class RandomLauncher : MonoBehaviour
         // ── 4. Compute launch velocity ───────────────────────────
         // Gravity turns on only here, with the launch velocity, so the ball can't pick up a
         // frame of fall while it's being moved to the origin above.
-        // With BallFlight, the aim is corrected for drag (Plans/Current/Ball_Flight_Physics_Plan.md).
-        // Without gravity, drag only slows the straight shot, so the straight aim stays exact.
+        // With BallFlight, the aim is corrected for drag and spin (Plans/Current/Ball_Flight_Physics_Plan.md).
+        // Without gravity there's no spin, and drag only slows the straight shot, so the straight
+        // aim stays exact.
         Vector3 launchVelocity;
+        Vector3 spin = Vector3.zero;
         float flightTime;
         if (useUnityGravity && _ballFlight != null)
         {
-            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, launchSpeed);
+            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, launchSpeed, out spin);
             flightTime = 0f;   // set from the prediction below
         }
         else if (useUnityGravity)
@@ -497,7 +499,7 @@ public class RandomLauncher : MonoBehaviour
 
         _falling = false;
 
-        _ballFlight?.BeginFlight();
+        _ballFlight?.BeginFlight(spin);
         _goalDetector.OnBallLaunched();
 
         float speed = launchVelocity.magnitude;
@@ -512,6 +514,8 @@ public class RandomLauncher : MonoBehaviour
             flightTime = predictedTime;
             speedText = $"{speed:F1} → {arrivalVelocity.magnitude:F1} m/s";
         }
+        if (spin != Vector3.zero)
+            speedText += $" | spin {spin.magnitude / (2f * Mathf.PI):F0} rev/s";
 
         Debug.Log($"[RandomLauncher] Shot fired → {quadrant} ({aimMode}) | " +
                   $"target ({target.x:F2}, {target.y:F2}, {target.z:F2}) | " +
