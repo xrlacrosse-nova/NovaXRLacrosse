@@ -29,6 +29,10 @@ public class RayButton : MonoBehaviour
     [Tooltip("Fired when the button is clicked (trigger while hovered, or mouse click in the Editor).")]
     public UnityEvent onPressed = new UnityEvent();
 
+    [Tooltip("For pick-one rows (players, difficulty): the label is dim Smoke until selected or " +
+             "hovered. Off for action buttons and keys, which are always bright Chalk.")]
+    public bool dimWhenIdle = false;
+
     [Header("Feel")]
     [Tooltip("How far (meters) the button sinks into the page when clicked.")]
     [Min(0f)]
@@ -39,8 +43,8 @@ public class RayButton : MonoBehaviour
     public float sinkSeconds = 0.12f;
 
     // Background alpha. ML2 is additive, so a dim background reads as a faint plate.
-    private const float IdleBackgroundAlpha = 0.25f;
-    private const float HoverBackgroundAlpha = 0.6f;
+    private const float IdleBackgroundAlpha = 0.45f;
+    private const float HoverBackgroundAlpha = 0.9f;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -143,7 +147,7 @@ public class RayButton : MonoBehaviour
         if (label != null)
         {
             label.text = _selected ? $"[ {_text} ]" : _text;
-            label.color = _selected || _hovered ? UiPalette.Chalk : UiPalette.Smoke;
+            label.color = _selected || _hovered || !dimWhenIdle ? UiPalette.Chalk : UiPalette.Smoke;
         }
 
         if (background != null)

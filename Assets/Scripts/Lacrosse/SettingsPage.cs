@@ -66,6 +66,8 @@ public class SettingsPage : MonoBehaviour
     /// </summary>
     public event Action<string, string> NameSaved;
 
+    private const float BackdropAlpha = 0.35f;
+
     private const string KeyRow1 = "QWERTYUIOP";
     private const string KeyRow2 = "ASDFGHJKL";
     private const string KeyRow3 = "ZXCVBNM";
@@ -113,6 +115,7 @@ public class SettingsPage : MonoBehaviour
         board.gameObject.SetActive(true); // build while active so RayButtons size their colliders
 
         AddLaserCollider();
+        BuildBackdrop();
         BuildMainPage();
         BuildNewPlayerPage();
         ShowPage(Page.Main);
@@ -227,6 +230,18 @@ public class SettingsPage : MonoBehaviour
 
     // ── Building ──────────────────────────────────────────────────
 
+    /// <summary>A plate behind every page, so the board reads as one panel instead of loose
+    /// labels floating in the air. ML2 is additive: a dim plate shows as faint grey glass.</summary>
+    private void BuildBackdrop()
+    {
+        RectTransform rect = CreatePage("Backdrop");
+        Image plate = rect.gameObject.AddComponent<Image>();
+        Color c = UiPalette.Smoke;
+        c.a = BackdropAlpha;
+        plate.color = c;
+        plate.raycastTarget = false;
+    }
+
     private void AddLaserCollider()
     {
         // The board's own trigger collider tells ControllerRayPointer the ray is near the page
@@ -251,7 +266,7 @@ public class SettingsPage : MonoBehaviour
         float y = gap * 2f;
 
         CreateLabel(_mainPage, "PLAYER", new Vector2(gap * 2f, y), new Vector2(columnWidth, fontSize * 1.4f),
-                    UiPalette.Smoke, TextAlignmentOptions.Left);
+                    UiPalette.Chalk, TextAlignmentOptions.Left);
         y += fontSize * 1.4f + gap;
 
         CreateButton(_mainPage, "+ New player", new Vector2(gap * 2f, y), new Vector2(columnWidth, keySize),
