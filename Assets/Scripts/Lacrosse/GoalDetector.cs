@@ -40,6 +40,7 @@ public class GoalDetector : MonoBehaviour
 
     // ── state ─────────────────────────────────────────────────────
 
+    private Rigidbody _rb;          // the ball's, if any; tells a save whether gravity is on
     private bool _active = false;   // true after OnBallLaunched()
     private bool _goalScored = false;
     private bool _saved = false;
@@ -68,8 +69,8 @@ public class GoalDetector : MonoBehaviour
     public event Action<Vector3> OnGoalScored;
 
     /// <summary>Fired once when the goalie's stick saves the shot. The payload is where the
-    /// ball's straight-line path meets the gate plane (the same meaning as the
-    /// <see cref="OnPlaneCrossed"/> payload), not where the stick touched it.</summary>
+    /// ball's path (an arc under gravity, else a straight line) meets the gate plane (the same
+    /// meaning as the <see cref="OnPlaneCrossed"/> payload), not where the stick touched it.</summary>
     public event Action<Vector3> OnSaved;
 
     /// <summary>True once the current shot has scored.</summary>
@@ -85,7 +86,20 @@ public class GoalDetector : MonoBehaviour
     /// <summary>World position of the ball when the current shot was saved.</summary>
     public Vector3 SaveContactPosition { get; private set; }
 
+    /// <summary>The ball's velocity when the current shot was saved.</summary>
+    public Vector3 SaveContactVelocity { get; private set; }
+
+    /// <summary>True if the ball was under Unity gravity when the current shot was saved, so
+    /// the projection to the gate plane is an arc. Captured at the touch: the ball is frozen
+    /// (kinematic) right after, so its Rigidbody can't be read from an OnSaved handler.</summary>
+    public bool SaveUsedGravity { get; private set; }
+
     // ── lifecycle ─────────────────────────────────────────────────
+
+    void Awake()
+    {
+        _rb = GetComponent<Rigidbody>();
+    }
 
     void Update()
     {
@@ -184,6 +198,8 @@ public class GoalDetector : MonoBehaviour
         _saved = true;
         _resolved = true;
         SaveContactPosition = contactPos;
+        SaveContactVelocity = ballVelocity;
+        SaveUsedGravity = _rb != null && _rb.useGravity && !_rb.isKinematic;
 
         _popupText = "SAVE!";
         _popupColor = UiPalette.Save;
@@ -198,11 +214,20 @@ public class GoalDetector : MonoBehaviour
         return true;
     }
 
-    /// <summary>The ball flies in a straight line until it crosses the gate plane (custom
-    /// gravity only turns on after that), so extend its path from the touch point to the plane.
+    /// <summary>Extends the ball's path from the touch point to the gate plane. Under Unity
+    /// gravity (<see cref="SaveUsedGravity"/>) that path is the parabola; otherwise the ball
+    /// flies straight until the plane (custom gravity only turns on after it), so it's a line.
     /// Falls back to the touch point if the ball isn't moving toward the plane.</summary>
     private Vector3 ProjectToGatePlane(Vector3 pos, Vector3 velocity)
     {
+        if (SaveUsedGravity)
+        {
+            return QuadrantMath.BallisticPlaneCrossing(pos, velocity, Physics.gravity,
+                                                       goalGateCenter.z, out Vector3 crossing, out _)
+                ? crossing
+                : pos;
+        }
+
         if (Mathf.Abs(velocity.z) < 0.001f) return pos;
 
         float t = (goalGateCenter.z - pos.z) / velocity.z;

@@ -30,7 +30,8 @@ public class ShotPathRecorder : MonoBehaviour
         /// <summary>Launch → end (gate plane, or the stick for a save). World space.</summary>
         public Vector3[] points;
 
-        /// <summary>Saves only: stick → gate plane. Empty otherwise.</summary>
+        /// <summary>Saves only: stick → gate plane (an arc under gravity, else two points).
+        /// Empty otherwise.</summary>
         public Vector3[] projectedTail;
 
         public PathOutcome outcome;
@@ -163,11 +164,44 @@ public class ShotPathRecorder : MonoBehaviour
         if (!_recording) return;
 
         Vector3 contact = _goalDetector.SaveContactPosition;
-        Vector3[] tail = (projectedPos - contact).sqrMagnitude > 0.0001f
-            ? new[] { contact, projectedPos }
-            : Array.Empty<Vector3>();
+        Vector3[] tail;
+        if ((projectedPos - contact).sqrMagnitude <= 0.0001f)
+            tail = Array.Empty<Vector3>();
+        else if (_goalDetector.SaveUsedGravity)
+            tail = SampleArcTail(contact, _goalDetector.SaveContactVelocity, projectedPos);
+        else
+            tail = new[] { contact, projectedPos };
 
         FinishPath(contact, tail, projectedPos, PathOutcome.Save);
+    }
+
+    /// <summary>Under gravity the projected tail is the parabola from the stick to the gate
+    /// plane (the same one GoalDetector projected the heatmap point along), sampled by time so
+    /// points land about minPointSpacing apart, capped at maxPointsPerShot. Ends exactly on
+    /// <paramref name="projectedPos"/>.</summary>
+    private Vector3[] SampleArcTail(Vector3 contact, Vector3 velocity, Vector3 projectedPos)
+    {
+        Vector3 gravity = Physics.gravity;
+        if (!QuadrantMath.BallisticPlaneCrossing(contact, velocity, gravity,
+                                                 _goalDetector.goalGateCenter.z, out _, out float time))
+            return new[] { contact, projectedPos };
+
+        // The chord slightly undercounts the arc's length; close enough for spacing.
+        float length = (projectedPos - contact).magnitude;
+        int segments = minPointSpacing > 0f
+            ? Mathf.CeilToInt(length / minPointSpacing)
+            : maxPointsPerShot - 1;
+        segments = Mathf.Clamp(segments, 1, maxPointsPerShot - 1);
+
+        var tail = new Vector3[segments + 1];
+        for (int i = 0; i < segments; i++)
+        {
+            float t = time * i / segments;
+            tail[i] = contact + velocity * t + 0.5f * gravity * t * t;
+        }
+        tail[segments] = projectedPos;
+
+        return tail;
     }
 
     /// <summary>The ball despawned with its shot still open: it never crossed the gate plane
