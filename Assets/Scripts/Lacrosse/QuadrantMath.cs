@@ -88,12 +88,10 @@ public static class QuadrantMath
     /// Launch velocity that sends a gravity-free shot from <paramref name="origin"/> straight
     /// through <paramref name="target"/> at <paramref name="launchSpeed"/>.
     ///
-    /// The ball launchers fly with no gravity applied mid-flight, so this always aims directly
-    /// at the target — any vertical bias layered on top of that direction (e.g. for a cosmetic
-    /// arc) would aim the ball away from target with nothing left to curve it back onto that
-    /// line, which is exactly the bug this replaced. A real arc needs gravity active for the
-    /// whole flight and a velocity solved to pass through target under it (see
-    /// Plans/BallLauncher_Plan.md, Option B) — not implemented here.
+    /// Only correct when no gravity acts mid-flight, so it always aims directly at the target.
+    /// Any vertical bias layered on top of that direction (e.g. for a cosmetic arc) would aim
+    /// the ball away from target with nothing left to curve it back onto that line. For a shot
+    /// that flies under gravity the whole way, use <see cref="ComputeBallisticLaunchVelocity"/>.
     /// </summary>
     public static Vector3 ComputeLaunchVelocity(Vector3 origin, Vector3 target, float launchSpeed)
     {
@@ -103,5 +101,109 @@ public static class QuadrantMath
             return Vector3.forward * launchSpeed;
 
         return delta.normalized * launchSpeed;
+    }
+
+    private const float MinFlightTime = 0.01f;
+    private const int BisectionSteps = 20;
+
+    /// <summary>
+    /// Launch velocity that arcs a shot from <paramref name="origin"/> onto
+    /// <paramref name="target"/> under constant <paramref name="gravity"/> (no drag), at about
+    /// <paramref name="launchSpeed"/>. See Plans/Future/Reviewed/Unity_Gravity_Plan.md.
+    ///
+    /// For flight time T: v0 = (Δ - ½·g·T² - ½·g·dt·T) / T. The ½·g·dt·T term matches how the
+    /// physics engine steps (gravity is added to velocity before each move), which drops a
+    /// stepped flight slightly more than the textbook parabola. Speed is large for tiny T,
+    /// falls to a minimum, then rises, so the flat, fast shot is the smaller T where
+    /// |v0(T)| = launchSpeed, found by bisection. If launchSpeed can't reach the target, the
+    /// minimum-speed shot is used instead and a warning is logged.
+    /// </summary>
+    public static Vector3 ComputeBallisticLaunchVelocity(
+        Vector3 origin, Vector3 target, float launchSpeed, Vector3 gravity, float dt)
+    {
+        return ComputeBallisticLaunchVelocity(origin, target, launchSpeed, gravity, dt, out _);
+    }
+
+    /// <inheritdoc cref="ComputeBallisticLaunchVelocity(Vector3, Vector3, float, Vector3, float)"/>
+    /// <param name="flightTime">Solved time from origin to target, in seconds.</param>
+    public static Vector3 ComputeBallisticLaunchVelocity(
+        Vector3 origin, Vector3 target, float launchSpeed, Vector3 gravity, float dt, out float flightTime)
+    {
+        Vector3 delta = target - origin;
+        float g = gravity.magnitude;
+
+        // No gravity or no distance: the straight shot is already exact.
+        if (g < 0.001f || delta.sqrMagnitude < 0.001f * 0.001f)
+        {
+            Vector3 straight = ComputeLaunchVelocity(origin, target, launchSpeed);
+            flightTime = delta.magnitude / Mathf.Max(launchSpeed, 0.001f);
+            return straight;
+        }
+
+        // Minimum-speed flight time of the textbook parabola. The dt term shifts it only
+        // slightly, which doesn't matter for picking the bisection bracket.
+        float tLow = MinFlightTime;
+        float tMinSpeed = Mathf.Max(Mathf.Sqrt(2f * delta.magnitude / g), tLow);
+
+        if (BallisticVelocity(delta, gravity, dt, tMinSpeed).magnitude > launchSpeed)
+        {
+            Debug.LogWarning($"[QuadrantMath] launchSpeed {launchSpeed:F1} m/s can't reach the target " +
+                             $"under gravity. Using the minimum-speed shot " +
+                             $"({BallisticVelocity(delta, gravity, dt, tMinSpeed).magnitude:F1} m/s).");
+            flightTime = tMinSpeed;
+            return BallisticVelocity(delta, gravity, dt, tMinSpeed);
+        }
+
+        // Even the shortest allowed flight is slower than launchSpeed: take that flight.
+        if (BallisticVelocity(delta, gravity, dt, tLow).magnitude <= launchSpeed)
+        {
+            flightTime = tLow;
+            return BallisticVelocity(delta, gravity, dt, tLow);
+        }
+
+        // |v0(T)| falls from above launchSpeed at tLow to at most launchSpeed at tHigh.
+        float tHigh = tMinSpeed;
+        for (int i = 0; i < BisectionSteps; i++)
+        {
+            float tMid = 0.5f * (tLow + tHigh);
+            if (BallisticVelocity(delta, gravity, dt, tMid).magnitude > launchSpeed)
+                tLow = tMid;
+            else
+                tHigh = tMid;
+        }
+
+        flightTime = tHigh;
+        return BallisticVelocity(delta, gravity, dt, tHigh);
+    }
+
+    // v0 that covers delta in flightTime under gravity, stepped at dt.
+    private static Vector3 BallisticVelocity(Vector3 delta, Vector3 gravity, float dt, float flightTime)
+    {
+        return delta / flightTime - 0.5f * gravity * (flightTime + dt);
+    }
+
+    /// <summary>
+    /// Where a ball at <paramref name="pos"/> with <paramref name="vel"/> under constant
+    /// <paramref name="gravity"/> crosses the plane z = <paramref name="planeZ"/>, and how long
+    /// it takes. Returns false if it isn't moving toward the plane.
+    ///
+    /// Assumes gravity has no z component (it points straight down), so z moves at constant
+    /// speed and the crossing time is linear.
+    /// </summary>
+    public static bool BallisticPlaneCrossing(Vector3 pos, Vector3 vel, Vector3 gravity,
+                                              float planeZ, out Vector3 crossing, out float time)
+    {
+        crossing = pos;
+        time = 0f;
+
+        if (Mathf.Abs(vel.z) < 0.0001f)
+            return false;
+
+        time = (planeZ - pos.z) / vel.z;
+        if (time < 0f)
+            return false;
+
+        crossing = pos + vel * time + 0.5f * gravity * time * time;
+        return true;
     }
 }
