@@ -1295,6 +1295,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CrowdAmbience
   saveCheer: {fileID: 8300000, guid: 3c4fe9e007f65dc418913d9c1bdf9e91, type: 3}
   goalGroan: {fileID: 8300000, guid: e25e6ea73489d0b40b84bb7a62e69f41, type: 3}
+  volume: 0.8
 --- !u!4 &431362377
 Transform:
   m_ObjectHideFlags: 0
@@ -1754,14 +1755,14 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 825625399}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: -0.42261827, z: 0, w: 0.9063079}
-  m_LocalPosition: {x: -0.871, y: 1.4, z: 1.725}
+  m_LocalRotation: {x: 0, y: -0.30070576, z: 0, w: 0.953717}
+  m_LocalPosition: {x: -1.5, y: 1.5, z: 2.4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1851236012}
   m_Father: {fileID: 1655719300}
-  m_LocalEulerAnglesHint: {x: 0, y: -50, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: -35, z: 0}
 --- !u!114 &825625401
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1780,6 +1781,7 @@ MonoBehaviour:
   gap: 8
   fontSize: 28
   launcher: {fileID: 0}
+  difficulty: {fileID: 0}
 --- !u!1 &866954152
 GameObject:
   m_ObjectHideFlags: 0
@@ -1801,6 +1803,7 @@ GameObject:
   - component: {fileID: 866954166}
   - component: {fileID: 866954167}
   - component: {fileID: 866954168}
+  - component: {fileID: 866954169}
   m_Layer: 0
   m_Name: LacrosseBall
   m_TagString: Untagged
@@ -1960,6 +1963,7 @@ MonoBehaviour:
   edgePadding: 0.05
   quadrantDepth: 0.65
   launchSpeed: 23
+  launchSpeedVariance: 0
   useUnityGravity: 1
   autoResetOnLaunch: 1
   enableCustomGravityOnGoal: 1
@@ -1972,6 +1976,7 @@ MonoBehaviour:
   maxShotInterval: 5
   shooterAnimation: {fileID: 229782168}
   countdownText: {fileID: 1065477489}
+  readyLabel: 
   releaseWatchdogSeconds: 5
 --- !u!114 &866954163
 MonoBehaviour:
@@ -2101,6 +2106,53 @@ MonoBehaviour:
     useSpin: 1
     spinRate: 22
     spinAxis: {x: 1, y: 0, z: 0}
+--- !u!114 &866954169
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866954152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 72bdcc800702cda4cbb75c834b82eb4e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DifficultySelector
+  levels:
+  - difficulty: 0
+    displayName: High school
+    launchSpeed: 16
+    launchSpeedVariance: 1
+    edgePadding: 0.2
+    quadrantDepth: 0.5
+    minShotInterval: 7
+    maxShotInterval: 10
+    shotsPerSession: 8
+    crowdVolume: 0.3
+  - difficulty: 1
+    displayName: College
+    launchSpeed: 21
+    launchSpeedVariance: 1.5
+    edgePadding: 0.08
+    quadrantDepth: 0.65
+    minShotInterval: 5
+    maxShotInterval: 8
+    shotsPerSession: 10
+    crowdVolume: 0.6
+  - difficulty: 2
+    displayName: Pro
+    launchSpeed: 26
+    launchSpeedVariance: 2
+    edgePadding: 0.02
+    quadrantDepth: 0.8
+    minShotInterval: 4
+    maxShotInterval: 6
+    shotsPerSession: 12
+    crowdVolume: 1
+  selected: 1
+  rememberSelection: 1
+  launcher: {fileID: 0}
+  crowd: {fileID: 0}
 --- !u!1 &901836324
 GameObject:
   m_ObjectHideFlags: 0
