@@ -29,6 +29,31 @@ public static class UiPalette
     /// stays quiet.</summary>
     public static readonly Color Miss = Smoke;
 
+    /// <summary>#FFFF00. Midpoint (50% saved) of the save-rate gradient only. A straight red →
+    /// green fade passes through a dim olive that nearly vanishes on an additive display.</summary>
+    public static readonly Color Mixed = Hex(0xFFFF00);
+
+    /// <summary>#FF8C00 orange. Goal, colorblind-safe (ShotHeatmapRecorder.colorblindSafe).</summary>
+    public static readonly Color GoalSafe = Hex(0xFF8C00);
+
+    /// <summary>#3399FF. Save, colorblind-safe. A bright blue on purpose: dark blue nearly
+    /// vanishes on an additive display.</summary>
+    public static readonly Color SaveSafe = Hex(0x3399FF);
+
+    /// <summary>Color for a save rate (0 = all goals, 1 = all saves): Goal → Mixed → Save, or
+    /// GoalSafe → Chalk → SaveSafe when colorblindSafe. Shared by the heatmap gradient and its
+    /// legend, so they always match.</summary>
+    public static Color SaveRateRamp(float saveRate, bool colorblindSafe)
+    {
+        Color low = colorblindSafe ? GoalSafe : Goal;
+        Color mid = colorblindSafe ? Chalk : Mixed;
+        Color high = colorblindSafe ? SaveSafe : Save;
+
+        // Two halves through a bright midpoint, so the middle never goes dim.
+        float t = Mathf.Clamp01(saveRate);
+        return t < 0.5f ? Color.Lerp(low, mid, t * 2f) : Color.Lerp(mid, high, t * 2f - 1f);
+    }
+
     private static Color Hex(int rgb)
     {
         return new Color(
