@@ -2,11 +2,10 @@ using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using MagicLeap.Examples;
 
 /// <summary>
 /// Runs a simulation-style shooting session: the ball sits idle until the player starts a session
-/// (controller trigger, or Space in the Unity Editor), waits through a pre-start countdown, then
+/// (staring at the START target — GazeStartTarget — or Space in the Unity Editor), waits through a pre-start countdown, then
 /// fires a fixed number of shots at randomized quadrants of the goal gate defined in GoalDetector
 /// (must be on the same GameObject), spaced by a randomized interval. Supports two aim modes:
 ///   - RandomInQuadrant: a uniformly-random point inside the quadrant (no two shots alike).
@@ -21,8 +20,8 @@ using MagicLeap.Examples;
 /// Setup:
 ///   1. Attach this script to the ball GameObject that also has GoalDetector + Rigidbody.
 ///   2. Set LaunchOrigin to a Transform positioned where shots come from (e.g. an empty at player position).
-///   3. Pick an AimMode and press Play. The ball stays idle until the start trigger fires
-///      (controller trigger button, or Space bar in the Editor), then a session of ShotsPerSession
+///   3. Pick an AimMode and press Play. The ball stays idle until a session is started
+///      (GazeStartTarget calls TryStartSession(), or Space bar in the Editor), then a session of ShotsPerSession
 ///      shots runs automatically. Alternatively, call LaunchBall() directly from any other script
 ///      or Unity Event to fire a single shot outside the session flow.
 ///   4. Optional: drag the shooter avatar (with ShooterAnimationController) into Shooter Animation.
@@ -98,7 +97,7 @@ public class RandomLauncher : MonoBehaviour
     [Min(1)]
     public int shotsPerSession = 3;
 
-    [Tooltip("Seconds after the start trigger before the first shot fires. Randomized per session.")]
+    [Tooltip("Seconds after the session starts before the first shot fires. Randomized per session.")]
     [Min(0f)]
     public float minPreStartDelay = 10f;
     [Min(0f)]
@@ -131,7 +130,6 @@ public class RandomLauncher : MonoBehaviour
 
     // session state
     private bool _sessionRunning = false;
-    private bool _controllerTriggerSubscribed = false;
     private int _shotsFiredThisSession = 0;
 
     // shot waiting on the shooter animation's release frame
@@ -157,6 +155,9 @@ public class RandomLauncher : MonoBehaviour
     private Quadrant _lastQuadrant;
 
     // ── Events ───────────────────────────────────────────────────
+
+    /// <summary>True from the start of the pre-start countdown until the session ends.</summary>
+    public bool IsSessionRunning => _sessionRunning;
 
     /// <summary>Fired when a new session begins (right as the pre-start countdown starts).</summary>
     public event System.Action OnSessionStarted;
@@ -196,22 +197,6 @@ public class RandomLauncher : MonoBehaviour
             _floorBoundary.OnDespawned += HandleDespawned;
         if (shooterAnimation != null)
             shooterAnimation.OnRelease += HandleShooterRelease;
-
-        // Don't touch MagicLeapController.Instance in Awake() — it needs an InputActionManager
-        // already present in the scene, which may not be true that early. Try here instead, and
-        // fail gracefully (e.g. testing in the Editor without a full ML rig set up) so the Space
-        // bar fallback below still works.
-        try
-        {
-            MagicLeapController.Instance.TriggerPressed += HandleStartTriggerPressed;
-            _controllerTriggerSubscribed = true;
-        }
-        catch (System.NullReferenceException)
-        {
-            Debug.LogWarning("[RandomLauncher] No MagicLeapController input available (no InputActionManager " +
-                              "in scene) — controller-trigger start is disabled this session; use the Space " +
-                              "bar in the Editor instead.");
-        }
     }
 
     void OnDisable()
@@ -222,12 +207,6 @@ public class RandomLauncher : MonoBehaviour
             _floorBoundary.OnDespawned -= HandleDespawned;
         if (shooterAnimation != null)
             shooterAnimation.OnRelease -= HandleShooterRelease;
-
-        if (_controllerTriggerSubscribed)
-        {
-            MagicLeapController.Instance.TriggerPressed -= HandleStartTriggerPressed;
-            _controllerTriggerSubscribed = false;
-        }
     }
 
     void Start()
@@ -242,7 +221,12 @@ public class RandomLauncher : MonoBehaviour
         if (_floorBoundary != null)
             _floorBoundary.Hide();
 
-        Debug.Log("[RandomLauncher] Waiting for start trigger (controller trigger"
+        // The trigger no longer starts a session, so on device the START target is the only way in.
+        if (FindFirstObjectByType<GazeStartTarget>() == null)
+            Debug.LogWarning("[RandomLauncher] No GazeStartTarget in the scene — on device there's no way to " +
+                             "start a session. Add a StartTarget (see Plans/Current/Input_Styles_Plan.md).");
+
+        Debug.Log("[RandomLauncher] Waiting for session start (gaze at START"
 #if UNITY_EDITOR
                   + ", or Space in the Editor"
 #endif
@@ -324,14 +308,11 @@ public class RandomLauncher : MonoBehaviour
 
     // ── Session start ────────────────────────────────────────────
 
-    private void HandleStartTriggerPressed(InputAction.CallbackContext ctx)
-    {
-        TryStartSession();
-    }
-
     /// <summary>Starts a new session (pre-start countdown, then ShotsPerSession shots) if one
-    /// isn't already running. Safe to call from any start-trigger source.</summary>
-    private void TryStartSession()
+    /// isn't already running. Safe to call from any start source (GazeStartTarget, Space in the
+    /// Editor). The controller trigger no longer starts a session: it only clicks the settings
+    /// page, so a stray pull can't start one before the goalie is ready.</summary>
+    public void TryStartSession()
     {
         if (_sessionRunning) return;
         StartCoroutine(RunSession());
