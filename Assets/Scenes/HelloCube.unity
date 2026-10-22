@@ -1517,6 +1517,7 @@ GameObject:
   - component: {fileID: 866954165}
   - component: {fileID: 866954166}
   - component: {fileID: 866954167}
+  - component: {fileID: 866954168}
   m_Layer: 0
   m_Name: LacrosseBall
   m_TagString: Untagged
@@ -1796,6 +1797,24 @@ MonoBehaviour:
   saveColor: {r: 0, g: 1, b: 0, a: 1}
   scoreColor: {r: 1, g: 0, b: 0, a: 1}
   missColor: {r: 0.43137255, g: 0.47843137, b: 0.5254902, a: 1}
+--- !u!114 &866954168
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866954152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bd45028624bf6b41bb01fb9222fe7a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BallFlight
+  settings:
+    useDrag: 1
+    dragCoefficient: 0.5
+    ballMass: 0.145
+    ballDiameter: 0.0635
+    airDensity: 1.2
 --- !u!1 &901836324
 GameObject:
   m_ObjectHideFlags: 0
