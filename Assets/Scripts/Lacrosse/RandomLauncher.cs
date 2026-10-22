@@ -68,7 +68,8 @@ public class RandomLauncher : MonoBehaviour
     public float launchSpeed = 18f;
 
     [Tooltip("Each shot's speed is Launch Speed ± this much (m/s), picked at random, so the goalie " +
-             "can't time a fixed speed. 0 = every shot at Launch Speed. Set by DifficultySelector.")]
+             "can't time a fixed speed. Capped at half of Launch Speed. 0 = every shot at Launch " +
+             "Speed. Set by DifficultySelector.")]
     [Min(0f)]
     public float launchSpeedVariance = 0f;
 
@@ -123,7 +124,7 @@ public class RandomLauncher : MonoBehaviour
     [Tooltip("TextMeshPro label used for GET READY / countdown digits / GO!. Leave unassigned to disable.")]
     public TextMeshProUGUI countdownText;
 
-    [Tooltip("Shown after GET READY in the countdown, e.g. 'College' -> 'GET READY · College'. " +
+    [Tooltip("Shown smaller on a second line under GET READY in the countdown, e.g. 'College'. " +
              "Empty = plain GET READY. Set by DifficultySelector.")]
     public string readyLabel = "";
 
@@ -467,7 +468,10 @@ public class RandomLauncher : MonoBehaviour
         // Without gravity there's no spin, and drag only slows the straight shot, so the straight
         // aim stays exact.
         // Speed varies per shot (launchSpeedVariance) so the goalie can't time a fixed speed.
-        float shotSpeed = Mathf.Max(1f, launchSpeed + Random.Range(-launchSpeedVariance, launchSpeedVariance));
+        // The spread is capped at half of launchSpeed, so a big variance on a slow base speed
+        // can't roll a shot too slow to reach the goal.
+        float spread = Mathf.Min(launchSpeedVariance, launchSpeed * 0.5f);
+        float shotSpeed = Mathf.Max(1f, launchSpeed + Random.Range(-spread, spread));
 
         Vector3 launchVelocity;
         Vector3 spin = Vector3.zero;
@@ -586,7 +590,11 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_countdownRemaining > 3f)
         {
-            string ready = string.IsNullOrEmpty(readyLabel) ? "GET READY" : $"GET READY · {readyLabel}";
+            // Level on its own smaller line: no wider than GET READY, and no '·' glyph that the
+            // countdown font might lack.
+            string ready = string.IsNullOrEmpty(readyLabel)
+                ? "GET READY"
+                : $"GET READY\n<size=60%>{readyLabel}</size>";
             SetLabel(ready, UiPalette.Chalk, 0f, animate: false);
             return;
         }

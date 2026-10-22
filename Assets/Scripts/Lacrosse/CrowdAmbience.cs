@@ -124,7 +124,7 @@ public class CrowdAmbience : MonoBehaviour
     /// </summary>
     void Play(AudioClip clip)
     {
-        if (clip == null || volume <= 0f)
+        if (clip == null)
             return;
 
         if (_source.isPlaying && _source.clip == clip)

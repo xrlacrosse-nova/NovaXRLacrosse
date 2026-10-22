@@ -84,6 +84,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     private GoalDetector _goalDetector;
     private RandomLauncher _launcher;
+    private DifficultySelector _difficulty; // optional: names the level under the headline
 
     private readonly List<Vector2> _points = new List<Vector2>();
     private readonly List<bool> _scored = new List<bool>();
@@ -97,6 +98,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     {
         _goalDetector = GetComponent<GoalDetector>();
         _launcher = GetComponent<RandomLauncher>();
+        _difficulty = FindFirstObjectByType<DifficultySelector>();
 
         if (heatmapPanel != null)
             heatmapPanel.SetActive(false);
@@ -267,9 +269,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         string headline = $"{totalSaves} of {_points.Count} saved";
 
-        // The difficulty, on a second line, so screenshots say what level the session was at.
-        if (_launcher != null && !string.IsNullOrEmpty(_launcher.readyLabel))
-            headline += $"\n{_launcher.readyLabel}";
+        // The difficulty, so screenshots say what level the session was at. It can't change
+        // mid-session, so the selector's current level is the session's level.
+        string level = _difficulty != null ? _difficulty.SelectedName : "";
 
         string Count(Quadrant q)
         {
@@ -277,8 +279,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
             return totals[index] == 0 ? "No shots" : $"{saves[index]} of {totals[index]}";
         }
 
+        // Second line, smaller, so it stays a footnote to the headline.
         if (headlineText != null)
-            headlineText.text = headline;
+            headlineText.text = level.Length > 0 ? $"{headline}\n<size=60%>{level}</size>" : headline;
 
         if (cornerLabels != null)
         {
@@ -302,8 +305,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
                 return $"{PositionName(q)}: {saves[index]}/{totals[index]}";
             }
 
+            // Level inline here, so the corner lines below keep their place.
+            string levelSuffix = level.Length > 0 ? $" ({level})" : "";
             quadrantBreakdownText.text =
-                $"Shot Heatmap: {headline}\n" +
+                $"Shot Heatmap: {headline}{levelSuffix}\n" +
                 $"{Corner(Quadrant.TopLeft)}  ·  {Corner(Quadrant.TopRight)}\n" +
                 $"{Corner(Quadrant.BottomLeft)}  ·  {Corner(Quadrant.BottomRight)}";
         }

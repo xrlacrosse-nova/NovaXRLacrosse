@@ -87,6 +87,7 @@ public class SettingsPage : MonoBehaviour
     private TextMeshProUGUI _nameMessage;
     private readonly List<(Difficulty difficulty, RayButton button)> _difficultyRows =
         new List<(Difficulty, RayButton)>();
+    private TextMeshProUGUI _difficultyMessage;
 
     private Page _page;
     private readonly StringBuilder _name = new StringBuilder();
@@ -246,8 +247,8 @@ public class SettingsPage : MonoBehaviour
 
     // ── Difficulty ────────────────────────────────────────────────
 
-    /// <summary>Marks the selector's current level. Also run at Start and on every change, since
-    /// the selector may load its saved choice after this page is built.</summary>
+    /// <summary>Marks the selector's current level, the one place rows get their selected state.
+    /// Run when the column is built, at Start and on every change.</summary>
     private void RefreshDifficultyRows()
     {
         if (difficulty == null) return;
@@ -313,18 +314,32 @@ public class SettingsPage : MonoBehaviour
                     UiPalette.Chalk, TextAlignmentOptions.Left);
         y += fontSize * 1.4f + gap;
 
+        var built = new HashSet<Difficulty>();
         foreach (DifficultyLevel level in difficulty.Levels)
         {
-            if (level == null) continue;
+            // A duplicated entry can't be picked (the selector uses the first), so no row for it.
+            if (level == null || !built.Add(level.difficulty)) continue;
 
             Difficulty d = level.difficulty;
             RayButton button = CreateButton(_mainPage, level.displayName, new Vector2(x, y),
                                             new Vector2(columnWidth, keySize),
-                                            () => difficulty.SetDifficulty(d), dimWhenIdle: true);
-            button.SetSelected(d == difficulty.Selected);
+                                            () => PickDifficulty(d), dimWhenIdle: true);
             _difficultyRows.Add((d, button));
             y += keySize + gap;
         }
+
+        _difficultyMessage = CreateLabel(_mainPage, "", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.2f),
+                                         UiPalette.Smoke, TextAlignmentOptions.Left);
+        RefreshDifficultyRows();
+    }
+
+    /// <summary>Row click. A refused change (session running, level missing) says so on the
+    /// page instead of the click doing nothing.</summary>
+    private void PickDifficulty(Difficulty d)
+    {
+        bool changed = difficulty.SetDifficulty(d);
+        _difficultyMessage.text = changed ? "" : "Can't change that now";
+        RefreshDifficultyRows();
     }
 
     private void BuildNewPlayerPage()

@@ -16,7 +16,8 @@ using UnityEngine;
 /// </summary>
 public class DifficultySelector : MonoBehaviour
 {
-    [Tooltip("The levels and their shot settings. Starting values — tune after play-testing.")]
+    [Tooltip("The levels and their shot settings, one per difficulty. Starting values — tune " +
+             "after play-testing.")]
     public List<DifficultyLevel> levels = DefaultLevels();
 
     [Tooltip("The difficulty at startup (or when Remember Selection is off / nothing is saved).")]
@@ -35,10 +36,24 @@ public class DifficultySelector : MonoBehaviour
 
     private const string PrefsKey = "Difficulty.Selected";
 
+    private bool _loaded;
+
     /// <summary>Fired after a new difficulty is applied (and once at startup).</summary>
     public event Action<Difficulty> OnDifficultyChanged;
 
-    public Difficulty Selected => selected;
+    /// <summary>The current difficulty. Reading it loads the saved choice first, so it's right
+    /// no matter which script's Awake runs first.</summary>
+    public Difficulty Selected
+    {
+        get
+        {
+            LoadSelection();
+            return selected;
+        }
+    }
+
+    /// <summary>The current level's display name, or "" if it isn't in the list.</summary>
+    public string SelectedName => FindLevel(Selected)?.displayName ?? "";
 
     public IReadOnlyList<DifficultyLevel> Levels => levels;
 
@@ -54,13 +69,8 @@ public class DifficultySelector : MonoBehaviour
         if (crowd == null)
             crowd = FindFirstObjectByType<CrowdAmbience>();
 
-        // Loaded in Awake so Selected is right before the settings page reads it.
-        if (rememberSelection &&
-            Enum.TryParse(PlayerPrefs.GetString(PrefsKey, ""), out Difficulty saved) &&
-            FindLevel(saved) != null)
-        {
-            selected = saved;
-        }
+        WarnAboutDuplicates();
+        LoadSelection();
     }
 
     void Start()
@@ -68,9 +78,18 @@ public class DifficultySelector : MonoBehaviour
         DifficultyLevel level = FindLevel(selected);
         if (level == null)
         {
-            Debug.LogWarning($"[DifficultySelector] No level for {selected} in the Levels list — shots " +
-                             "use the RandomLauncher's Inspector values.");
-            return;
+            // Selected was removed from the list: fall back to the first level rather than
+            // silently running on the launcher's Inspector values with nothing marked.
+            level = FirstLevel();
+            if (level == null)
+            {
+                Debug.LogWarning("[DifficultySelector] The Levels list is empty — shots use the " +
+                                 "RandomLauncher's Inspector values.");
+                return;
+            }
+            Debug.LogWarning($"[DifficultySelector] No level for {selected} in the Levels list — " +
+                             $"using {level.displayName}.");
+            selected = level.difficulty;
         }
 
         level.ApplyTo(launcher, crowd);
@@ -97,6 +116,7 @@ public class DifficultySelector : MonoBehaviour
             return false;
         }
 
+        LoadSelection();
         selected = difficulty;
         level.ApplyTo(launcher, crowd);
 
@@ -113,6 +133,7 @@ public class DifficultySelector : MonoBehaviour
         return true;
     }
 
+    /// <summary>The first level with this difficulty (duplicates after it are ignored).</summary>
     public DifficultyLevel FindLevel(Difficulty difficulty)
     {
         if (levels == null) return null;
@@ -122,6 +143,46 @@ public class DifficultySelector : MonoBehaviour
                 return level;
         }
         return null;
+    }
+
+    // ── Private helpers ───────────────────────────────────────────
+
+    /// <summary>Loads the saved choice once (if Remember Selection is on and it's still in the list).</summary>
+    private void LoadSelection()
+    {
+        if (_loaded) return;
+        _loaded = true;
+
+        if (rememberSelection &&
+            Enum.TryParse(PlayerPrefs.GetString(PrefsKey, ""), out Difficulty saved) &&
+            FindLevel(saved) != null)
+        {
+            selected = saved;
+        }
+    }
+
+    private DifficultyLevel FirstLevel()
+    {
+        if (levels == null) return null;
+        foreach (DifficultyLevel level in levels)
+        {
+            if (level != null)
+                return level;
+        }
+        return null;
+    }
+
+    /// <summary>A duplicated Inspector entry can never be picked (FindLevel returns the first), so say so.</summary>
+    private void WarnAboutDuplicates()
+    {
+        if (levels == null) return;
+        var seen = new HashSet<Difficulty>();
+        foreach (DifficultyLevel level in levels)
+        {
+            if (level != null && !seen.Add(level.difficulty))
+                Debug.LogWarning($"[DifficultySelector] The Levels list has more than one {level.difficulty} — " +
+                                 "only the first is used.");
+        }
     }
 
     // ── Editor ────────────────────────────────────────────────────
