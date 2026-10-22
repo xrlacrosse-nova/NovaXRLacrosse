@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Records the flight path of every shot in a session (Plans/Current/Shot_Path_Tracking_Plan.md).
+/// Records the flight path of every shot in a session (Plans/Past/Shot_Path_Tracking_Plan.md).
 /// Attach to the same GameObject as GoalDetector (and RandomLauncher / ShotHeatmapRecorder, if
 /// present) — the ball. Display lives in ShotPathVisualizer, which subscribes to
 /// <see cref="OnPathsReady"/> / <see cref="OnPathsCleared"/>.

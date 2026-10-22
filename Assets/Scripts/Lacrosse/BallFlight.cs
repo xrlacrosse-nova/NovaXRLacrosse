@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>Real-ball numbers for <see cref="BallFlight"/>. Defaults are an NCAA lacrosse ball
-/// in sea-level air (Plans/Current/Ball_Flight_Physics_Plan.md).</summary>
+/// in sea-level air (Plans/Past/Ball_Flight_Physics_Plan.md).</summary>
 [System.Serializable]
 public struct BallFlightSettings
 {
@@ -57,7 +57,7 @@ public struct BallFlightSettings
 /// <summary>
 /// Adds the forces Unity's Rigidbody doesn't have to the ball's flight: air drag and, optionally,
 /// spin (Magnus lift). Unity keeps doing gravity — this never adds it, or the ball would get
-/// double gravity. See Plans/Current/Ball_Flight_Physics_Plan.md.
+/// double gravity. See Plans/Past/Ball_Flight_Physics_Plan.md.
 ///
 /// It also predicts flights with the same math, stepped like the physics engine
 /// (semi-implicit Euler at Time.fixedDeltaTime, v += a·dt then x += v·dt), so predictions match
@@ -82,6 +82,7 @@ public class BallFlight : MonoBehaviour
 
     private Rigidbody _rb;
     private FloorBoundary _floorBoundary;
+    private GoalDetector _goalDetector;   // optional: ends the shot's spin at the gate plane
     private bool _inFlight = false;
     private Vector3 _flightSpin;   // world-space spin of the current shot (axis × rad/s)
 
@@ -107,19 +108,32 @@ public class BallFlight : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody>();
         _floorBoundary = GetComponent<FloorBoundary>();
+        _goalDetector = GetComponent<GoalDetector>();
     }
 
     void OnEnable()
     {
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned += EndFlight;
+        if (_goalDetector != null)
+            _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
     }
 
     void OnDisable()
     {
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned -= EndFlight;
+        if (_goalDetector != null)
+            _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
     }
+
+    // The shot's spin is a fixed world-space vector picked for the flight to the goal. Once
+    // the shot is over (past the plane) or knocked off its path (any hit, e.g. the goalie's
+    // body), keeping it would bend the loose ball sideways or lift it, so drop it. Drag stays.
+    // Saves don't need this: the ball freezes in place.
+    private void HandlePlaneCrossed(Vector3 crossingPos) => _flightSpin = Vector3.zero;
+
+    void OnCollisionEnter(Collision collision) => _flightSpin = Vector3.zero;
 
     /// <summary>Does nothing while the ball is kinematic (hidden, or frozen after a save), so a
     /// saved ball stays put. AddForce here acts on the velocity at the start of the physics
@@ -196,7 +210,11 @@ public class BallFlight : MonoBehaviour
             origin, target, speed, Physics.gravity, Time.fixedDeltaTime);
 
         Vector3 fullSpin = settings.useSpin ? ShotSpin(firstGuess) : Vector3.zero;
-        float floorY = (_floorBoundary != null ? _floorBoundary.floorY : 0f) + 0.5f * settings.ballDiameter;
+        // minY includes the crossing itself, so a target below floor + radius would always
+        // "dip". Only count dipping below the target too (less the aim tolerance).
+        float floorY = Mathf.Min(
+            (_floorBoundary != null ? _floorBoundary.floorY : 0f) + 0.5f * settings.ballDiameter,
+            target.y - SolveWarnDistance);
 
         for (int i = 0; i < SpinScales.Length; i++)
         {

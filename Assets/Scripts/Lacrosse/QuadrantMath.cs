@@ -109,7 +109,7 @@ public static class QuadrantMath
     /// <summary>
     /// Launch velocity that arcs a shot from <paramref name="origin"/> onto
     /// <paramref name="target"/> under constant <paramref name="gravity"/> (no drag), at about
-    /// <paramref name="launchSpeed"/>. See Plans/Future/Reviewed/Unity_Gravity_Plan.md.
+    /// <paramref name="launchSpeed"/>. See Plans/Past/Unity_Gravity_Plan.md.
     ///
     /// For flight time T: v0 = (Δ - ½·g·T² - ½·g·dt·T) / T. The ½·g·dt·T term matches how the
     /// physics engine steps (gravity is added to velocity before each move), which drops a

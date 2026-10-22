@@ -62,8 +62,10 @@ public class RandomLauncher : MonoBehaviour
     public float quadrantDepth = 0.65f;
 
     [Header("Launch Physics")]
-    [Tooltip("Overall launch speed (m/s). Actual velocity is computed to hit the target; " +
-             "this acts as a minimum — the ball will never be slower than this.")]
+    [Tooltip("Launch speed (m/s) off the stick. The direction is solved to hit the target. " +
+             "The ball reaches the goal slower than this once drag (BallFlight) acts — see the " +
+             "arrival speed in the 'Shot fired' log — and may launch faster only if this is too " +
+             "slow to reach the target at all.")]
     public float launchSpeed = 18f;
 
     [Tooltip("Use Unity's Rigidbody gravity (Physics.gravity) for the whole flight, with the " +
@@ -471,7 +473,7 @@ public class RandomLauncher : MonoBehaviour
         // ── 4. Compute launch velocity ───────────────────────────
         // Gravity turns on only here, with the launch velocity, so the ball can't pick up a
         // frame of fall while it's being moved to the origin above.
-        // With BallFlight, the aim is corrected for drag and spin (Plans/Current/Ball_Flight_Physics_Plan.md).
+        // With BallFlight, the aim is corrected for drag and spin (Plans/Past/Ball_Flight_Physics_Plan.md).
         // Without gravity there's no spin, and drag only slows the straight shot, so the straight
         // aim stays exact.
         Vector3 launchVelocity;

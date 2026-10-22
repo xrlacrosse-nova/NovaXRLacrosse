@@ -14,7 +14,7 @@ using UnityEngine.UI;
 /// shows during active play. If no RandomLauncher is present, points are still recorded but the
 /// heatmap is only ever shown/cleared manually via ShowHeatmap()/ClearRecordedShots().
 ///
-/// Readout (Plans/Past/UI_Design_Plan.md; copy per Plans/Current/Field_Markings_Plan.md): dotContainer is drawn as the goal mouth —
+/// Readout (Plans/Past/UI_Design_Plan.md; copy per Plans/Past/Field_Markings_Plan.md): dotContainer is drawn as the goal mouth —
 /// an optional runtime-built cage frame, each corner's name and save count inside that corner,
 /// and a "6 of 8 saved" headline. Saves are dots, goals use goalMarkPrefab (e.g. an ×) so the
 /// two read apart by shape as well as color.
