@@ -122,6 +122,7 @@ public class RandomLauncher : MonoBehaviour
     private Rigidbody _rb;
     private GoalDetector _goalDetector;
     private FloorBoundary _floorBoundary;
+    private BallFlight _ballFlight;   // optional: air drag + drag-aware aim
 
     // falling state (custom gravity after the plane; only when useUnityGravity is off)
     private bool _falling = false;
@@ -168,8 +169,9 @@ public class RandomLauncher : MonoBehaviour
         _rb = GetComponent<Rigidbody>();
         _goalDetector = GetComponent<GoalDetector>();
         _floorBoundary = GetComponent<FloorBoundary>();
+        _ballFlight = GetComponent<BallFlight>();
 
-        // The ballistic aim assumes no damping. Interpolation smooths the arc between physics steps.
+        // The ballistic aim assumes no damping (BallFlight adds real drag itself). Interpolation smooths the arc between physics steps.
 #if UNITY_6000_0_OR_NEWER
         _rb.linearDamping = 0f;
 #else
@@ -463,9 +465,16 @@ public class RandomLauncher : MonoBehaviour
         // ── 4. Compute launch velocity ───────────────────────────
         // Gravity turns on only here, with the launch velocity, so the ball can't pick up a
         // frame of fall while it's being moved to the origin above.
+        // With BallFlight, the aim is corrected for drag (Plans/Current/Ball_Flight_Physics_Plan.md).
+        // Without gravity, drag only slows the straight shot, so the straight aim stays exact.
         Vector3 launchVelocity;
         float flightTime;
-        if (useUnityGravity)
+        if (useUnityGravity && _ballFlight != null)
+        {
+            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, launchSpeed);
+            flightTime = 0f;   // set from the prediction below
+        }
+        else if (useUnityGravity)
         {
             launchVelocity = QuadrantMath.ComputeBallisticLaunchVelocity(
                 origin, target, launchSpeed, Physics.gravity, Time.fixedDeltaTime, out flightTime);
@@ -488,13 +497,25 @@ public class RandomLauncher : MonoBehaviour
 
         _falling = false;
 
+        _ballFlight?.BeginFlight();
         _goalDetector.OnBallLaunched();
 
         float speed = launchVelocity.magnitude;
         float angle = speed > 0.001f ? Mathf.Asin(Mathf.Clamp(launchVelocity.y / speed, -1f, 1f)) * Mathf.Rad2Deg : 0f;
+
+        // Arrival speed is what the goalie actually faces after drag.
+        string speedText = $"{speed:F1} m/s";
+        if (_ballFlight != null &&
+            _ballFlight.PredictPlaneCrossing(origin, launchVelocity, target.z, useUnityGravity,
+                                             out _, out float predictedTime, out Vector3 arrivalVelocity))
+        {
+            flightTime = predictedTime;
+            speedText = $"{speed:F1} → {arrivalVelocity.magnitude:F1} m/s";
+        }
+
         Debug.Log($"[RandomLauncher] Shot fired → {quadrant} ({aimMode}) | " +
                   $"target ({target.x:F2}, {target.y:F2}, {target.z:F2}) | " +
-                  $"speed {speed:F1} m/s | {angle:+0.0;-0.0}° | {flightTime:F2} s");
+                  $"speed {speedText} | {angle:+0.0;-0.0}° | {flightTime:F2} s");
     }
 
     // ── Private helpers ───────────────────────────────────────────

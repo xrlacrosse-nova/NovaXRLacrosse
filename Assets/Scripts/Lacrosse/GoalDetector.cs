@@ -41,6 +41,7 @@ public class GoalDetector : MonoBehaviour
     // ── state ─────────────────────────────────────────────────────
 
     private Rigidbody _rb;          // the ball's, if any; tells a save whether gravity is on
+    private BallFlight _ballFlight; // optional: projects a save along the drag-aware path
     private bool _active = false;   // true after OnBallLaunched()
     private bool _goalScored = false;
     private bool _saved = false;
@@ -99,6 +100,7 @@ public class GoalDetector : MonoBehaviour
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
+        _ballFlight = GetComponent<BallFlight>();
     }
 
     void Update()
@@ -217,9 +219,18 @@ public class GoalDetector : MonoBehaviour
     /// <summary>Extends the ball's path from the touch point to the gate plane. Under Unity
     /// gravity (<see cref="SaveUsedGravity"/>) that path is the parabola; otherwise the ball
     /// flies straight until the plane (custom gravity only turns on after it), so it's a line.
+    /// With a BallFlight on the ball, its predictor adds drag to either path.
     /// Falls back to the touch point if the ball isn't moving toward the plane.</summary>
     private Vector3 ProjectToGatePlane(Vector3 pos, Vector3 velocity)
     {
+        if (_ballFlight != null)
+        {
+            return _ballFlight.PredictPlaneCrossing(pos, velocity, goalGateCenter.z, SaveUsedGravity,
+                                                    out Vector3 crossing, out _)
+                ? crossing
+                : pos;
+        }
+
         if (SaveUsedGravity)
         {
             return QuadrantMath.BallisticPlaneCrossing(pos, velocity, Physics.gravity,

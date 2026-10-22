@@ -63,6 +63,7 @@ public class ShotPathRecorder : MonoBehaviour
     private GoalDetector _goalDetector;
     private RandomLauncher _launcher;
     private FloorBoundary _floorBoundary;
+    private BallFlight _ballFlight;
 
     private readonly List<ShotPath> _paths = new List<ShotPath>();
     private readonly List<Vector3> _current = new List<Vector3>();
@@ -91,6 +92,7 @@ public class ShotPathRecorder : MonoBehaviour
         _goalDetector = GetComponent<GoalDetector>();
         _launcher = GetComponent<RandomLauncher>();
         _floorBoundary = GetComponent<FloorBoundary>();
+        _ballFlight = GetComponent<BallFlight>();
     }
 
     void OnEnable()
@@ -167,12 +169,24 @@ public class ShotPathRecorder : MonoBehaviour
         Vector3[] tail;
         if ((projectedPos - contact).sqrMagnitude <= 0.0001f)
             tail = Array.Empty<Vector3>();
+        else if (_ballFlight != null)
+            tail = SampleFlightTail(contact, _goalDetector.SaveContactVelocity, projectedPos);
         else if (_goalDetector.SaveUsedGravity)
             tail = SampleArcTail(contact, _goalDetector.SaveContactVelocity, projectedPos);
         else
             tail = new[] { contact, projectedPos };
 
         FinishPath(contact, tail, projectedPos, PathOutcome.Save);
+    }
+
+    /// <summary>With a BallFlight, the tail is its predicted path (drag, plus gravity if the ball
+    /// was under it), the same one GoalDetector projected the heatmap point along.</summary>
+    private Vector3[] SampleFlightTail(Vector3 contact, Vector3 velocity, Vector3 projectedPos)
+    {
+        Vector3[] tail = _ballFlight.SamplePathToPlane(contact, velocity, _goalDetector.goalGateCenter.z,
+                                                       minPointSpacing, maxPointsPerShot,
+                                                       _goalDetector.SaveUsedGravity);
+        return tail.Length >= 2 ? tail : new[] { contact, projectedPos };
     }
 
     /// <summary>Under gravity the projected tail is the parabola from the stick to the gate
