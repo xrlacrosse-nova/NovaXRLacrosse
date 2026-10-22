@@ -14,7 +14,7 @@ using UnityEngine.UI;
 /// shows during active play. If no RandomLauncher is present, points are still recorded but the
 /// heatmap is only ever shown/cleared manually via ShowHeatmap()/ClearRecordedShots().
 ///
-/// Readout (Plans/Past/UI_Design_Plan.md; copy per Plans/Current/Field_Markings_Plan.md): dotContainer is drawn as the goal mouth —
+/// Readout (Plans/Past/UI_Design_Plan.md; copy per Plans/Past/Field_Markings_Plan.md): dotContainer is drawn as the goal mouth —
 /// an optional runtime-built cage frame, each corner's name and save count inside that corner,
 /// and a "6 of 8 saved" headline. Saves are dots, goals use goalMarkPrefab (e.g. an ×) so the
 /// two read apart by shape as well as color.
@@ -22,8 +22,6 @@ using UnityEngine.UI;
 [RequireComponent(typeof(GoalDetector))]
 public class ShotHeatmapRecorder : MonoBehaviour
 {
-    public enum GoalieHand { Right, Left }
-
     [Header("Visualization")]
     [Tooltip("Color for shots that scored (bad outcome — the goalie let it in).")]
     public Color scoreColor = UiPalette.Goal;
@@ -35,10 +33,6 @@ public class ShotHeatmapRecorder : MonoBehaviour
     [Range(4f, 200f)]
     public float dotSize = 26f;
 
-    [Tooltip("The goalie's stick hand. Sets which corners are called 'Stick' vs 'Off-stick': " +
-             "for a right-handed goalie, stick side is the goalie's right.")]
-    public GoalieHand goalieHand = GoalieHand.Right;
-
     [Header("UI (World Space Canvas)")]
     [Tooltip("Root panel toggled active/inactive to show or hide the whole heatmap. Leave unassigned to disable.")]
     public GameObject heatmapPanel;
@@ -48,7 +42,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     public TextMeshProUGUI headlineText;
 
     [Tooltip("One label per corner, in Quadrant order: TopLeft, TopRight, BottomLeft, BottomRight. " +
-             "Each gets its corner's name and count, e.g. 'Stick high\\n0 of 1'. Text alignment is " +
+             "Each gets its corner's name and count, e.g. 'Top left\\n0 of 1'. Text alignment is " +
              "set by the script so each label hugs its own outer corner.")]
     public TextMeshProUGUI[] cornerLabels = new TextMeshProUGUI[4];
 
@@ -289,7 +283,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
                 if (cornerLabels[i] == null) continue;
 
                 Quadrant q = (Quadrant)i;
-                cornerLabels[i].text = $"{CornerName(q)}\n{Count(q)}";
+                cornerLabels[i].text = $"{PositionName(q)}\n{Count(q)}";
                 cornerLabels[i].alignment = CornerAlignment(q);
                 cornerLabels[i].color = UiPalette.Chalk;
             }
@@ -321,17 +315,6 @@ public class ShotHeatmapRecorder : MonoBehaviour
             case Quadrant.BottomLeft: return "Bottom left";
             default: return "Bottom right";
         }
-    }
-
-    /// <summary>Goalie terms for a corner. Quadrant Left is -X, the goalie's own left (the
-    /// goalie faces +Z); for a right-handed goalie the stick side is the right.</summary>
-    private string CornerName(Quadrant quadrant)
-    {
-        bool left = quadrant == Quadrant.TopLeft || quadrant == Quadrant.BottomLeft;
-        bool top = quadrant == Quadrant.TopLeft || quadrant == Quadrant.TopRight;
-        bool stickSide = goalieHand == GoalieHand.Right ? !left : left;
-
-        return (stickSide ? "Stick" : "Off-stick") + (top ? " high" : " low");
     }
 
     private static TextAlignmentOptions CornerAlignment(Quadrant quadrant)

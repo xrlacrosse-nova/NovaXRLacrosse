@@ -21,6 +21,9 @@ using UnityEngine;
 /// avatar into RandomLauncher's Shooter Animation field. Use the "Test Shot" context menu in
 /// Play mode to tune ReleaseNormalizedTime.
 /// </summary>
+// Runs after LacrosseStickGrip (default order 0), so on the release frame the stick is already
+// posed for this frame's animation and the ball spawns where the stick head actually is.
+[DefaultExecutionOrder(100)]
 public class ShooterAnimationController : MonoBehaviour
 {
     [Header("References (auto-found if empty)")]
@@ -111,12 +114,17 @@ public class ShooterAnimationController : MonoBehaviour
         _watching = false;
     }
 
-    void Update()
+    /// <summary>LateUpdate, not Update: the Animator has evaluated this frame and the stick grip
+    /// has posed the stick, so the release check and the launch point both match what's on
+    /// screen. In Update both were a frame old, and at the fast part of the swing that put the
+    /// ball well off the stick head.</summary>
+    void LateUpdate()
     {
         if (!_watching) return;
 
-        // The Animator applies Play() during its own update after this frame's Update, so the
-        // state info still shows the previous state on the frame PlayShot() was called — skip it.
+        // Skip the frame PlayShot() was called: if it was called after the Animator's update,
+        // the state info still shows the previous state (e.g. Shoot held on its last frame,
+        // which would read as already past the release point).
         if (Time.frameCount > _playFrame)
         {
             AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
@@ -200,6 +208,13 @@ public class ShooterAnimationController : MonoBehaviour
 
         if (logRelease && !timedOut)
             Debug.Log($"[ShooterAnimationController] Release at normalized time {normalizedTime:0.000}.");
+
+        // A long frame can carry the clip well past the release point before it's seen, so the
+        // ball leaves the stick later in the swing than tuned. Always worth knowing about.
+        if (!timedOut && normalizedTime - releaseNormalizedTime > 0.05f)
+            Debug.LogWarning($"[ShooterAnimationController] Release fired late, at normalized time " +
+                             $"{normalizedTime:0.000} (target {releaseNormalizedTime:0.000}) — a frame hitch " +
+                             "carried the clip past the release point.", this);
 
         OnRelease?.Invoke();
     }

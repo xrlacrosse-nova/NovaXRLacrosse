@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 /// <summary>
-/// Display half of shot path tracking (Plans/Current/Shot_Path_Tracking_Plan.md): draws every
+/// Display half of shot path tracking (Plans/Past/Shot_Path_Tracking_Plan.md): draws every
 /// shot ShotPathRecorder recorded as a 3D streak in the world, along the exact route the ball
 /// flew — launch point to the gate plane (or the stick, for a save).
 ///
