@@ -1815,6 +1815,9 @@ MonoBehaviour:
     ballMass: 0.145
     ballDiameter: 0.0635
     airDensity: 1.2
+    useSpin: 1
+    spinRate: 22
+    spinAxis: {x: 1, y: 0, z: 0}
 --- !u!1 &901836324
 GameObject:
   m_ObjectHideFlags: 0
