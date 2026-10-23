@@ -2014,12 +2014,12 @@ MonoBehaviour:
   showDots: 0
   colorblindSafe: 0
   gradientMode: 1
-  gradientRadius: 0.5
+  gradientRadius: 0.25
   gradientGamma: 0.45
   recencyDecay: 0.85
   gradientResolution: 96
   maxGradientShots: 500
-  drawGradientLegend: 1
+  drawGradientLegend: 0
   legendGap: 30
   legendHeight: 18
   legendFontSize: 36
