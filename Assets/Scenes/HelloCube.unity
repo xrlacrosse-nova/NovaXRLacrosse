@@ -716,6 +716,7 @@ GameObject:
   m_Component:
   - component: {fileID: 188054071}
   - component: {fileID: 188054072}
+  - component: {fileID: 188054073}
   m_Layer: 0
   m_Name: Players
   m_TagString: Untagged
@@ -751,6 +752,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerProfileStore
   launcher: {fileID: 0}
+--- !u!114 &188054073
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 188054070}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9dd34217f900e1409612254279ae617, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SessionHistory
+  trendSessions: 10
+  minCornerShots: 2
+  players: {fileID: 0}
+  launcher: {fileID: 0}
+  heatmap: {fileID: 0}
+  pathVisualizer: {fileID: 0}
+  difficulty: {fileID: 0}
 --- !u!1 &203844586
 GameObject:
   m_ObjectHideFlags: 0
@@ -1829,6 +1849,7 @@ MonoBehaviour:
   launcher: {fileID: 0}
   difficulty: {fileID: 0}
   players: {fileID: 0}
+  history: {fileID: 0}
 --- !u!1 &866954152
 GameObject:
   m_ObjectHideFlags: 0
