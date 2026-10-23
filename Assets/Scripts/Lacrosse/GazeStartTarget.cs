@@ -18,8 +18,10 @@ using UnityEngine.XR.OpenXR.Features.Interactions;
 /// per-user calibration). Falls back to head gaze, with a warning, when eye tracking isn't
 /// available. The Editor has no eye tracker, so it always uses the camera's forward.
 ///
-/// The hit test is geometric (gaze ray within TargetRadius of the target's center), so the
-/// target needs no collider and can't block the controller ray or the ball.
+/// The hit test is geometric (gaze ray within TargetRadius of Gaze Center), so the target needs
+/// no collider and can't block the controller ray or the ball. A dim full ring (the track) is
+/// built behind Ring Fill at runtime, so there's always something visible to look at, not just
+/// blank space where the empty fill will be.
 ///
 /// Setup: put on a "StartTarget" GameObject beside the shooter, facing the goalie. Make the ring
 /// and START label children of Visual Root (hidden mid-session; this GameObject stays active to
@@ -34,10 +36,20 @@ public class GazeStartTarget : MonoBehaviour
     [Tooltip("Image (Image Type = Filled, Radial 360) whose fill shows dwell progress.")]
     public Image ringFill;
 
-    [Tooltip("Gaze within this distance (meters) of the target's center counts as on it. " +
+    [Tooltip("Point the gaze has to be on — put it at the ring's center, with START inside the ring. " +
+             "Empty = this GameObject's position.")]
+    public Transform gazeCenter;
+
+    [Tooltip("Gaze within this distance (meters) of Gaze Center counts as on it. " +
              "~0.5 m (1 m across) at ~10 m.")]
     [Min(0.01f)]
     public float targetRadius = 0.5f;
+
+    [Tooltip("Build a dim full ring behind Ring Fill so the target is visible before it fills.")]
+    public bool showTrack = true;
+
+    [Tooltip("Color of the track ring behind the fill.")]
+    public Color trackColor = new Color(1f, 1f, 1f, 0.25f);
 
     [Header("Dwell")]
     [Tooltip("Seconds of continuous gaze to start a session.")]
@@ -105,7 +117,37 @@ public class GazeStartTarget : MonoBehaviour
                              "itself or a parent — ignoring it. Move the ring and label under a child.");
             visualRoot = null;
         }
+
+        if (showTrack && ringFill != null)
+            BuildTrack();
     }
+
+    // A copy of Ring Fill, always full and dim, drawn just behind it.
+    private void BuildTrack()
+    {
+        var track = new GameObject("RingTrack", typeof(RectTransform), typeof(Image));
+        var rect = (RectTransform)track.transform;
+        var fillRect = ringFill.rectTransform;
+        rect.SetParent(fillRect.parent, false);
+        rect.SetSiblingIndex(fillRect.GetSiblingIndex()); // earlier sibling = drawn first (behind)
+        rect.anchorMin = fillRect.anchorMin;
+        rect.anchorMax = fillRect.anchorMax;
+        rect.pivot = fillRect.pivot;
+        rect.anchoredPosition3D = fillRect.anchoredPosition3D;
+        rect.sizeDelta = fillRect.sizeDelta;
+        rect.localRotation = fillRect.localRotation;
+        rect.localScale = fillRect.localScale;
+
+        var image = track.GetComponent<Image>();
+        image.sprite = ringFill.sprite;
+        image.material = ringFill.material;
+        image.preserveAspect = ringFill.preserveAspect;
+        image.type = Image.Type.Simple;
+        image.color = trackColor;
+        image.raycastTarget = false;
+    }
+
+    private Vector3 GazeCenter => gazeCenter != null ? gazeCenter.position : transform.position;
 
     void Start()
     {
@@ -188,7 +230,7 @@ public class GazeStartTarget : MonoBehaviour
 
     private bool IsOnTarget(Ray gaze)
     {
-        Vector3 toTarget = transform.position - gaze.origin;
+        Vector3 toTarget = GazeCenter - gaze.origin;
         float along = Vector3.Dot(toTarget, gaze.direction);
         if (along <= 0f) return false; // behind the viewer
 
@@ -283,6 +325,6 @@ public class GazeStartTarget : MonoBehaviour
     void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.white;
-        Gizmos.DrawWireSphere(transform.position, targetRadius);
+        Gizmos.DrawWireSphere(GazeCenter, targetRadius);
     }
 }
