@@ -15,8 +15,10 @@ using UnityEngine.UI;
 ///     when a DifficultySelector is in the scene. Without a PlayerProfileStore the player column
 ///     is just "+ New player".
 ///   - New player: on-screen keyboard and name field. Only shown while naming (or renaming) a player.
-/// The history button and page are added with SessionHistory (Player_Session_History_Plan.md,
-/// step 3).
+///   - History: the selected player's saved sessions, newest first, paged with older / newer,
+///     and their recent trend. Clicking a session replays it on the heatmap and as path streaks
+///     (clicking it again, or BACK, returns to the live readout). Opened with
+///     "View &lt;player&gt;'s history", which only shows with a SessionHistory in the scene.
 ///
 /// Visible at app start and after OnSessionEnded, hidden on OnSessionStarted, so nothing on it
 /// can be clicked (or changed) mid-session.
@@ -30,7 +32,8 @@ public class SettingsPage : MonoBehaviour
     public enum Page
     {
         Main,
-        NewPlayer
+        NewPlayer,
+        History
     }
 
     [Header("Board")]
@@ -72,6 +75,9 @@ public class SettingsPage : MonoBehaviour
              "Rename or Delete.")]
     public PlayerProfileStore players;
 
+    [Tooltip("Leave empty to find the SessionHistory in the scene. None = no history button or page.")]
+    public SessionHistory history;
+
     /// <summary>Name rules: 1–12 characters, A–Z, 0–9 and space, trimmed.</summary>
     public const int MaxNameLength = PlayerProfileStore.MaxNameLength;
 
@@ -108,6 +114,23 @@ public class SettingsPage : MonoBehaviour
     private TextMeshProUGUI _playerMessage;
     private PlayerProfile _deleteArmedFor;      // first Delete click waiting for the second
     private float _deleteArmedUntil;
+    private RayButton _viewHistoryButton;
+
+    // history page (only with a PlayerProfileStore and SessionHistory)
+    private RectTransform _historyPage;
+    private TextMeshProUGUI _historyTitle;
+    private TextMeshProUGUI _historyPageLabel;  // "(2 / 5)"
+    private TextMeshProUGUI _historyTrend;
+    private RectTransform _historyRows;         // rebuilt on open and on paging
+    private readonly List<(SessionSummary session, RayButton button)> _historyButtons =
+        new List<(SessionSummary, RayButton)>();
+    private readonly List<SessionSummary> _historySessions = new List<SessionSummary>();
+    private Vector2 _historyRowsTopLeft;
+    private float _historyRowWidth;
+    private int _historyCapacity;               // session rows per page
+    private int _historyPageIndex;              // 0 = newest
+    private RayButton _olderButton;
+    private RayButton _newerButton;
 
     private Page _page;
     private readonly StringBuilder _name = new StringBuilder();
@@ -127,6 +150,9 @@ public class SettingsPage : MonoBehaviour
 
         if (players == null)
             players = FindFirstObjectByType<PlayerProfileStore>();
+
+        if (history == null)
+            history = FindFirstObjectByType<SessionHistory>();
 
         if (board == null)
             board = GetComponentInChildren<Canvas>(true);
@@ -151,6 +177,7 @@ public class SettingsPage : MonoBehaviour
         BuildBackdrop();
         BuildMainPage();
         BuildNewPlayerPage();
+        BuildHistoryPage();
         ShowPage(Page.Main);
     }
 
@@ -201,9 +228,13 @@ public class SettingsPage : MonoBehaviour
 
     // ── Session events ────────────────────────────────────────────
 
+    /// <summary>The session start closes any replay (the heatmap and paths clear), so the board
+    /// comes back on Main rather than on a History page pointing at it.</summary>
     void HandleSessionStarted()
     {
         DisarmDelete();
+        if (_page == Page.History)
+            ShowPage(Page.Main);
         SetShown(false);
     }
 
@@ -222,9 +253,14 @@ public class SettingsPage : MonoBehaviour
             RebuildPlayerRows();
         else
             RefreshPlayerRows();
+        RefreshViewHistoryLabel();
     }
 
-    void HandlePlayersChanged() => RebuildPlayerRows();
+    void HandlePlayersChanged()
+    {
+        RebuildPlayerRows();
+        RefreshViewHistoryLabel();
+    }
 
     private void SetShown(bool shown)
     {
@@ -241,6 +277,8 @@ public class SettingsPage : MonoBehaviour
         _page = page;
         _mainPage.gameObject.SetActive(page == Page.Main);
         _newPlayerPage.gameObject.SetActive(page == Page.NewPlayer);
+        if (_historyPage != null)
+            _historyPage.gameObject.SetActive(page == Page.History);
     }
 
     /// <summary>Opens the keyboard with an empty name, to add a player.</summary>
@@ -451,6 +489,124 @@ public class SettingsPage : MonoBehaviour
         RefreshPlayerRows();
     }
 
+    // ── History ───────────────────────────────────────────────────
+
+    /// <summary>"View &lt;player&gt;'s history": follows the selected player and renames.</summary>
+    private void RefreshViewHistoryLabel()
+    {
+        if (_viewHistoryButton != null)
+            _viewHistoryButton.Text = $"View {players.CurrentPlayer.displayName}'s history";
+    }
+
+    /// <summary>Opens the History page for the selected player, newest sessions first. The list
+    /// is read once here; nothing is saved while the page is up (it's hidden mid-session).</summary>
+    private void OpenHistory()
+    {
+        DisarmDelete();
+        PlayerProfile player = players.CurrentPlayer;
+
+        _historySessions.Clear();
+        _historySessions.AddRange(history.ListSessions(player));
+        _historyPageIndex = 0;
+        _historyTitle.text = $"{player.displayName}: History";
+        _historyTrend.text = TrendLine(player);
+
+        ShowPage(Page.History); // before building, so the rows' RayButtons size their colliders
+        RebuildHistoryRows();
+    }
+
+    /// <summary>BACK: closes any replay (the last live session's readout comes back) and
+    /// returns to Main.</summary>
+    private void CloseHistory()
+    {
+        history.CloseReplay();
+        ShowPage(Page.Main);
+    }
+
+    private void PageHistory(int delta)
+    {
+        _historyPageIndex += delta;
+        RebuildHistoryRows();
+    }
+
+    /// <summary>Session row click: replays it, or closes the replay if it's the one showing.</summary>
+    private void PickSession(SessionSummary session)
+    {
+        if (history.ReplayingSessionId == session.sessionId)
+            history.CloseReplay();
+        else if (!history.Replay(session))
+            _historyTrend.text = "Couldn't open that session";
+        RefreshHistoryRows();
+    }
+
+    /// <summary>Marks the session being replayed.</summary>
+    private void RefreshHistoryRows()
+    {
+        foreach (var row in _historyButtons)
+            row.button.SetSelected(row.session.sessionId == history.ReplayingSessionId);
+    }
+
+    /// <summary>Redraws one page of session rows, e.g. "Oct 21  14:30   6 of 8 saved   College".
+    /// Older / newer only show when there's a page that way.</summary>
+    private void RebuildHistoryRows()
+    {
+        foreach (Transform child in _historyRows)
+            Destroy(child.gameObject);
+        _historyButtons.Clear();
+
+        int count = _historySessions.Count;
+        int pages = Mathf.Max(1, Mathf.CeilToInt(count / (float)_historyCapacity));
+        _historyPageIndex = Mathf.Clamp(_historyPageIndex, 0, pages - 1);
+
+        _historyPageLabel.text = pages > 1 ? $"({_historyPageIndex + 1} / {pages})" : "";
+        _olderButton.gameObject.SetActive(_historyPageIndex < pages - 1);
+        _newerButton.gameObject.SetActive(_historyPageIndex > 0);
+
+        if (count == 0)
+        {
+            CreateLabel(_historyRows, "No saved sessions yet", _historyRowsTopLeft,
+                        new Vector2(_historyRowWidth, keySize), UiPalette.Smoke, TextAlignmentOptions.Left);
+            return;
+        }
+
+        int first = _historyPageIndex * _historyCapacity;
+        for (int i = 0; i < _historyCapacity && first + i < count; i++)
+        {
+            SessionSummary session = _historySessions[first + i];
+            string level = history.LevelName(session.difficulty);
+            string text = $"{SessionHistory.StartLabel(session)}   {session.saves} of {session.shots} saved" +
+                          (level.Length > 0 ? $"   {level}" : "");
+
+            Vector2 topLeft = _historyRowsTopLeft + new Vector2(0f, i * (keySize + gap));
+            RayButton button = CreateButton(_historyRows, text, topLeft, new Vector2(_historyRowWidth, keySize),
+                                            () => PickSession(session), dimWhenIdle: true,
+                                            alignment: TextAlignmentOptions.Left);
+            _historyButtons.Add((session, button));
+        }
+
+        RefreshHistoryRows();
+    }
+
+    /// <summary>"Last 10 sessions: 63% saved   Best: Top left 80%   Worst: Bottom right 40%".
+    /// No '·' between the parts: the default TMP font may lack it.</summary>
+    private string TrendLine(PlayerProfile player)
+    {
+        SessionHistory.Trends t = history.GetTrends(player);
+        if (t.shots == 0) return "";
+
+        string line = t.sessions == 1
+            ? $"Last session: {Percent(t.saves, t.shots)} saved"
+            : $"Last {t.sessions} sessions: {Percent(t.saves, t.shots)} saved";
+        if (t.hasBest)
+            line += $"   Best: {ShotHeatmapRecorder.PositionName(t.best)} {Mathf.RoundToInt(t.bestRate * 100f)}%";
+        if (t.hasWorst)
+            line += $"   Worst: {ShotHeatmapRecorder.PositionName(t.worst)} {Mathf.RoundToInt(t.worstRate * 100f)}%";
+        return line;
+    }
+
+    private static string Percent(int part, int whole) =>
+        whole > 0 ? $"{Mathf.RoundToInt(100f * part / whole)}%" : "0%";
+
     // ── Difficulty ────────────────────────────────────────────────
 
     /// <summary>Marks the selector's current level, the one place rows get their selected state.
@@ -510,6 +666,17 @@ public class SettingsPage : MonoBehaviour
                          OpenNewPlayer);
 
         BuildDifficultyColumn(w / 2f + gap, columnWidth);
+
+        // Bottom of the right column, level with Rename / Delete.
+        if (players != null && history != null)
+        {
+            float actionY = BoardHeight - gap * 2f - keySize;
+            _viewHistoryButton = CreateButton(_mainPage, "View history", new Vector2(w / 2f + gap, actionY),
+                                              new Vector2(columnWidth, keySize), OpenHistory);
+            // "View <12 chars>'s history" can outgrow the button at full size.
+            AutoSize(_viewHistoryButton.label);
+            RefreshViewHistoryLabel();
+        }
     }
 
     /// <summary>PLAYER column below its title: the player rows (rebuilt by RebuildPlayerRows),
@@ -538,9 +705,7 @@ public class SettingsPage : MonoBehaviour
                                      new Vector2(columnWidth, fontSize * 1.2f), UiPalette.Smoke,
                                      TextAlignmentOptions.Left);
         // "Delete <12 chars>? Click again" can outgrow the column at full size.
-        _playerMessage.enableAutoSizing = true;
-        _playerMessage.fontSizeMin = fontSize * 0.5f;
-        _playerMessage.fontSizeMax = fontSize;
+        AutoSize(_playerMessage);
 
         float actionWidth = (columnWidth - gap) / 2f;
         CreateButton(_mainPage, "Rename", new Vector2(x, actionY), new Vector2(actionWidth, keySize),
@@ -642,6 +807,57 @@ public class SettingsPage : MonoBehaviour
         CreateButton(_newPlayerPage, "SAVE", new Vector2(bx, y), new Vector2(actionWidth, keySize), Save);
     }
 
+    /// <summary>History page: title and page count on top, one page of session rows, the trend
+    /// line, then [ &lt; older ] [ newer &gt; ] ... [ BACK ] along the bottom. Not built without a
+    /// PlayerProfileStore and SessionHistory.</summary>
+    private void BuildHistoryPage()
+    {
+        if (players == null || history == null) return;
+
+        _historyPage = CreatePage("History");
+
+        float x = gap * 2f;
+        float inner = BoardWidth - gap * 4f;
+        float y = gap * 2f;
+
+        _historyTitle = CreateLabel(_historyPage, "", new Vector2(x, y), new Vector2(inner, fontSize * 1.4f),
+                                    UiPalette.Chalk, TextAlignmentOptions.Left);
+        _historyPageLabel = CreateLabel(_historyPage, "", new Vector2(x, y), new Vector2(inner, fontSize * 1.4f),
+                                        UiPalette.Smoke, TextAlignmentOptions.Right);
+        y += fontSize * 1.4f + gap;
+
+        float navY = BoardHeight - gap * 2f - keySize;
+        float trendY = navY - gap - fontSize * 1.2f;
+
+        _historyRowsTopLeft = new Vector2(x, y);
+        _historyRowWidth = inner;
+        _historyCapacity = Mathf.Max(1, Mathf.FloorToInt((trendY - y) / (keySize + gap)));
+
+        _historyRows = CreateRect("History rows", _historyPage);
+        Stretch(_historyRows);
+
+        _historyTrend = CreateLabel(_historyPage, "", new Vector2(x, trendY), new Vector2(inner, fontSize * 1.2f),
+                                    UiPalette.Smoke, TextAlignmentOptions.Left);
+        AutoSize(_historyTrend);
+
+        // < and > rather than ◀ / ▶: the default TMP font may not have those glyphs.
+        float navWidth = keySize * 3f;
+        _olderButton = CreateButton(_historyPage, "< older", new Vector2(x, navY), new Vector2(navWidth, keySize),
+                                    () => PageHistory(1));
+        _newerButton = CreateButton(_historyPage, "newer >", new Vector2(x + navWidth + gap, navY),
+                                    new Vector2(navWidth, keySize), () => PageHistory(-1));
+        CreateButton(_historyPage, "BACK", new Vector2(x + inner - navWidth, navY), new Vector2(navWidth, keySize),
+                     CloseHistory);
+    }
+
+    /// <summary>Shrinks a label's text (down to half size) instead of letting it overflow.</summary>
+    private void AutoSize(TMP_Text label)
+    {
+        label.enableAutoSizing = true;
+        label.fontSizeMin = fontSize * 0.5f;
+        label.fontSizeMax = fontSize;
+    }
+
     private float BoardWidth => _boardRect.rect.width;
 
     private float BoardHeight => _boardRect.rect.height;
@@ -657,9 +873,11 @@ public class SettingsPage : MonoBehaviour
     }
 
     /// <summary>Button at <paramref name="topLeft"/> (canvas units from the board's top-left, y down).
-    /// <paramref name="dimWhenIdle"/> = a pick-one row (dim until hovered or selected).</summary>
+    /// <paramref name="dimWhenIdle"/> = a pick-one row (dim until hovered or selected). A
+    /// non-centered label gets an inner margin so it doesn't touch the button's edge.</summary>
     private RayButton CreateButton(RectTransform parent, string text, Vector2 topLeft, Vector2 size,
-                                   UnityAction onPressed, bool dimWhenIdle = false)
+                                   UnityAction onPressed, bool dimWhenIdle = false,
+                                   TextAlignmentOptions alignment = TextAlignmentOptions.Center)
     {
         RectTransform rect = CreateRect($"Button {text}", parent);
         PlaceTopLeft(rect, topLeft, size);
@@ -667,8 +885,9 @@ public class SettingsPage : MonoBehaviour
         Image background = rect.gameObject.AddComponent<Image>();
         background.raycastTarget = false;
 
-        TextMeshProUGUI label = CreateLabel(rect, text, Vector2.zero, size, UiPalette.Smoke,
-                                            TextAlignmentOptions.Center);
+        TextMeshProUGUI label = CreateLabel(rect, text, Vector2.zero, size, UiPalette.Smoke, alignment);
+        if (alignment != TextAlignmentOptions.Center)
+            label.margin = new Vector4(gap * 2f, 0f, gap * 2f, 0f);
 
         RayButton button = rect.gameObject.AddComponent<RayButton>();
         button.dimWhenIdle = dimWhenIdle; // before Setup, which draws the idle color

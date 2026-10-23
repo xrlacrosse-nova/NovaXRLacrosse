@@ -25,7 +25,8 @@ using UnityEngine.UI;
 /// (UiPalette.SaveRateRamp). ThisSession uses the session that just ended; AllSessions uses every
 /// session kept this run (or loaded with LoadHistory), older ones fainter by recencyDecay, and
 /// adds an "All sessions" line under the headline. ShowLifetime draws a given set of shots with
-/// every session weighted equally and no dots; ShowLive returns to the live readout.
+/// every session weighted equally and no dots; ShowSession draws one saved session the way the
+/// live readout would (Player_Session_History_Plan.md replay); ShowLive returns to the live readout.
 /// </summary>
 [RequireComponent(typeof(GoalDetector))]
 public class ShotHeatmapRecorder : MonoBehaviour
@@ -158,6 +159,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
     private readonly List<RecordedShot> _history = new List<RecordedShot>();
     private readonly List<RecordedShot> _scratch = new List<RecordedShot>();
     private List<RecordedShot> _lifetimeShots; // non-null while the Lifetime view is shown
+    private List<RecordedShot> _replayShots;   // non-null while a saved session is replayed
+    private string _replayLevel = "";          // that session's level name
 
     private int _nextSession = 0;    // session index stamped on the shots being recorded now
     private bool _committed = false; // _shots already added to _history
@@ -292,12 +295,13 @@ public class ShotHeatmapRecorder : MonoBehaviour
     // ── Public API ────────────────────────────────────────────────
 
     /// <summary>Clears the current session's shots and hides the heatmap (and any Lifetime
-    /// view). The All Sessions history is kept; see ResetGradientHistory.</summary>
+    /// view or replay). The All Sessions history is kept; see ResetGradientHistory.</summary>
     public void ClearRecordedShots()
     {
         _shots.Clear();
         _committed = false;
         _lifetimeShots = null;
+        _replayShots = null;
         _visible = false;
 
         HideDisplay();
@@ -342,14 +346,34 @@ public class ShotHeatmapRecorder : MonoBehaviour
         }
 
         _lifetimeShots = shots != null ? new List<RecordedShot>(shots) : new List<RecordedShot>();
+        _replayShots = null;
         RebuildDisplay();
     }
 
-    /// <summary>Closes the Lifetime view and brings back the last live session's readout (or
-    /// hides the heatmap if there isn't one).</summary>
+    /// <summary>Replay (Player_Session_History_Plan.md): draws one saved session's shots with
+    /// the same drawing as the live readout (gradient of just that session, dots if showDots,
+    /// <paramref name="levelName"/> under the headline, no "All sessions" line). ShowLive or the
+    /// next session start closes it. Refused while a session is running.</summary>
+    public void ShowSession(IReadOnlyList<RecordedShot> shots, string levelName)
+    {
+        if (_launcher != null && _launcher.IsSessionRunning)
+        {
+            Debug.LogWarning("[ShotHeatmapRecorder] ShowSession refused: a session is running.");
+            return;
+        }
+
+        _replayShots = shots != null ? new List<RecordedShot>(shots) : new List<RecordedShot>();
+        _replayLevel = levelName ?? "";
+        _lifetimeShots = null;
+        RebuildDisplay();
+    }
+
+    /// <summary>Closes the Lifetime view or replay and brings back the last live session's
+    /// readout (or hides the heatmap if there isn't one).</summary>
     public void ShowLive()
     {
         _lifetimeShots = null;
+        _replayShots = null;
 
         if (_visible && _shots.Count > 0)
             RebuildDisplay();
@@ -379,7 +403,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     private void Redraw()
     {
-        if (_lifetimeShots != null || _visible)
+        if (_lifetimeShots != null || _replayShots != null || _visible)
             RebuildDisplay();
     }
 
@@ -388,21 +412,22 @@ public class ShotHeatmapRecorder : MonoBehaviour
     private void RebuildDisplay()
     {
         bool lifetime = _lifetimeShots != null;
-        if (dotContainer == null || (!lifetime && (!_visible || _shots.Count == 0)))
+        bool replay = !lifetime && _replayShots != null;
+        if (dotContainer == null || (!lifetime && !replay && (!_visible || _shots.Count == 0)))
             return;
 
         if (heatmapPanel != null)
             heatmapPanel.SetActive(true);
 
         UpdateCageFrame();
-        UpdateLabels(lifetime);
+        UpdateLabels(lifetime, replay);
 
         ClearDotInstances();
-        bool gradientShown = UpdateGradient(lifetime);
+        bool gradientShown = UpdateGradient(lifetime, replay);
         UpdateLegend(gradientShown);
 
         if (!lifetime && showDots && dotPrefab != null)
-            PlotDots();
+            PlotDots(replay ? _replayShots : _shots);
     }
 
     private void HideDisplay()
@@ -417,17 +442,17 @@ public class ShotHeatmapRecorder : MonoBehaviour
             heatmapPanel.SetActive(false);
     }
 
-    private void PlotDots()
+    private void PlotDots(List<RecordedShot> shots)
     {
         Vector2 boxSize = dotContainer.rect.size;
-        Debug.Log($"[ShotHeatmapRecorder] RebuildDisplay: dotContainer size={boxSize}, plotting {_shots.Count} points");
+        Debug.Log($"[ShotHeatmapRecorder] RebuildDisplay: dotContainer size={boxSize}, plotting {shots.Count} points");
 
         Color goalColor = colorblindSafe ? UiPalette.GoalSafe : scoreColor;
         Color savedColor = colorblindSafe ? UiPalette.SaveSafe : saveColor;
 
-        for (int i = 0; i < _shots.Count; i++)
+        for (int i = 0; i < shots.Count; i++)
         {
-            RecordedShot shot = _shots[i];
+            RecordedShot shot = shots[i];
             RectTransform prefab = shot.scored && goalMarkPrefab != null ? goalMarkPrefab : dotPrefab;
 
             // worldPositionStays: false — dotContainer sits under a heavily-downscaled World
@@ -458,11 +483,11 @@ public class ShotHeatmapRecorder : MonoBehaviour
     }
 
     /// <summary>Buckets each shot by quadrant, fresh off the same list the dot-plot uses (or the
-    /// Lifetime shots) — no separate running counters to keep in sync or reset — and writes the
-    /// headline and corner labels (or the single fallback label).</summary>
-    private void UpdateLabels(bool lifetime)
+    /// Lifetime / replayed shots) — no separate running counters to keep in sync or reset — and
+    /// writes the headline and corner labels (or the single fallback label).</summary>
+    private void UpdateLabels(bool lifetime, bool replay)
     {
-        List<RecordedShot> shots = lifetime ? _lifetimeShots : _shots;
+        List<RecordedShot> shots = lifetime ? _lifetimeShots : replay ? _replayShots : _shots;
 
         int[] saves = new int[4];
         int[] totals = new int[4];
@@ -483,7 +508,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         // All Sessions: this session's tally, then the running one under it.
         string trend = "";
-        if (!lifetime && gradientMode == GradientMode.AllSessions)
+        if (!lifetime && !replay && gradientMode == GradientMode.AllSessions)
         {
             CollectAllSessions(_scratch);
             int allSaves = 0;
@@ -501,8 +526,10 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
         // The difficulty, so screenshots say what level the session was at. It can't change
         // mid-session, so the selector's current level is the session's level. Lifetime spans
-        // many levels, so it's labelled as Lifetime instead.
-        string level = lifetime ? "Lifetime" : _difficulty != null ? _difficulty.SelectedName : "";
+        // many levels, so it's labelled as Lifetime instead. A replay shows its own session's level.
+        string level = lifetime ? "Lifetime"
+                     : replay ? _replayLevel
+                     : _difficulty != null ? _difficulty.SelectedName : "";
 
         string Count(Quadrant q)
         {
@@ -554,8 +581,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
         }
     }
 
-    /// <summary>Plain position name for a corner, as the goalie sees the goal.</summary>
-    private static string PositionName(Quadrant quadrant)
+    /// <summary>Plain position name for a corner, as the goalie sees the goal. Shared with the
+    /// settings page's History trend line, so both name corners the same way.</summary>
+    public static string PositionName(Quadrant quadrant)
     {
         switch (quadrant)
         {
@@ -590,7 +618,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     }
 
     /// <summary>Draws the gradient for the current view. Returns whether it's shown.</summary>
-    private bool UpdateGradient(bool lifetime)
+    private bool UpdateGradient(bool lifetime, bool replay)
     {
         _scratch.Clear();
         int start = 0;
@@ -599,6 +627,12 @@ public class ShotHeatmapRecorder : MonoBehaviour
         if (lifetime)
         {
             _scratch.AddRange(_lifetimeShots);
+        }
+        else if (replay)
+        {
+            // Just the replayed session, in either gradient mode (the saved file holds one session).
+            if (gradientMode != GradientMode.Off)
+                _scratch.AddRange(_replayShots);
         }
         else if (gradientMode == GradientMode.ThisSession)
         {
