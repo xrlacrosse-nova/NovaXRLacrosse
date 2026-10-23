@@ -169,6 +169,17 @@ public class RandomLauncher : MonoBehaviour
     /// <summary>True from the start of the pre-start countdown until the session ends.</summary>
     public bool IsSessionRunning => _sessionRunning;
 
+    /// <summary>Quadrant the most recent shot was aimed at. Set in LaunchToward before
+    /// GoalDetector.OnShotLaunched fires, so a listener to that event reads this shot's aim.</summary>
+    public Quadrant LastAimQuadrant => _lastQuadrant;
+
+    /// <summary>Where the most recent shot was aimed, normalized to the gate ([-1, 1],
+    /// QuadrantMath.NormalizeToGate). Set at the same time as LastAimQuadrant.</summary>
+    public Vector2 LastAimNormalized { get; private set; }
+
+    /// <summary>Release speed (m/s) of the most recent shot, after the per-shot variance.</summary>
+    public float LastLaunchSpeed { get; private set; }
+
     /// <summary>Fired when a new session begins (right as the pre-start countdown starts).</summary>
     public event System.Action OnSessionStarted;
 
@@ -460,6 +471,8 @@ public class RandomLauncher : MonoBehaviour
         _lastTarget = target;
         _hasTarget = true;
         _lastQuadrant = quadrant;
+        LastAimNormalized = QuadrantMath.NormalizeToGate(
+            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, target);
 
         // ── 4. Compute launch velocity ───────────────────────────
         // Gravity turns on only here, with the launch velocity, so the ball can't pick up a
@@ -503,6 +516,7 @@ public class RandomLauncher : MonoBehaviour
 #endif
 
         _falling = false;
+        LastLaunchSpeed = launchVelocity.magnitude;
 
         _ballFlight?.BeginFlight(spin);
         _goalDetector.OnBallLaunched();

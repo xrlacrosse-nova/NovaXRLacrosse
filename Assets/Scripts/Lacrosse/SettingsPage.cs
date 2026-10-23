@@ -10,11 +10,13 @@ using UnityEngine.UI;
 /// The settings board to the left of the ML Rig (see Plans/Current/Input_Styles_Plan.md),
 /// clicked with the controller ray (ControllerRayPointer) while the controller is out of the
 /// stick mount. Shows one page at a time on the same board:
-///   - Main: PLAYER column with "+ New player", and the DIFFICULTY column (one row per level,
-///     the current one marked) when a DifficultySelector is in the scene.
-///   - New player: on-screen keyboard and name field. Only shown while naming a player.
-/// The player list, Rename/Delete and history rows are added once PlayerProfileStore exists
-/// (Player_Session_History_Plan.md); until then the board ships without them.
+///   - Main: PLAYER column (one row per player, the selected one marked, "+ New player", and
+///     Rename / Delete) and the DIFFICULTY column (one row per level, the current one marked)
+///     when a DifficultySelector is in the scene. Without a PlayerProfileStore the player column
+///     is just "+ New player".
+///   - New player: on-screen keyboard and name field. Only shown while naming (or renaming) a player.
+/// The history button and page are added with SessionHistory (Player_Session_History_Plan.md,
+/// step 3).
 ///
 /// Visible at app start and after OnSessionEnded, hidden on OnSessionStarted, so nothing on it
 /// can be clicked (or changed) mid-session.
@@ -54,6 +56,11 @@ public class SettingsPage : MonoBehaviour
     [Min(4f)]
     public float fontSize = 28f;
 
+    [Header("Players")]
+    [Tooltip("Seconds Delete waits for the second, confirming click before it reverts.")]
+    [Min(0.5f)]
+    public float deleteConfirmSeconds = 3f;
+
     [Header("References")]
     [Tooltip("Leave empty to find the RandomLauncher in the scene.")]
     public RandomLauncher launcher;
@@ -61,14 +68,12 @@ public class SettingsPage : MonoBehaviour
     [Tooltip("Leave empty to find the DifficultySelector in the scene. None = no DIFFICULTY column.")]
     public DifficultySelector difficulty;
 
-    /// <summary>Name rules: 1–12 characters, A–Z, 0–9 and space, trimmed.</summary>
-    public const int MaxNameLength = 12;
+    [Tooltip("Leave empty to find the PlayerProfileStore in the scene. None = no player list, " +
+             "Rename or Delete.")]
+    public PlayerProfileStore players;
 
-    /// <summary>
-    /// Fired on SAVE with a valid name: (name being renamed, or null for a new player; new name).
-    /// PlayerProfileStore will handle this (AddPlayer / Rename), including refusing duplicates.
-    /// </summary>
-    public event Action<string, string> NameSaved;
+    /// <summary>Name rules: 1–12 characters, A–Z, 0–9 and space, trimmed.</summary>
+    public const int MaxNameLength = PlayerProfileStore.MaxNameLength;
 
     private const float BackdropAlpha = 0.35f;
 
@@ -89,9 +94,24 @@ public class SettingsPage : MonoBehaviour
         new List<(Difficulty, RayButton)>();
     private TextMeshProUGUI _difficultyMessage;
 
+    // player column (only with a PlayerProfileStore)
+    private RectTransform _playerRows;          // rebuilt when the list changes or scrolls
+    private readonly List<(PlayerProfile player, RayButton button)> _playerButtons =
+        new List<(PlayerProfile, RayButton)>();
+    private Vector2 _playerRowsTopLeft;
+    private float _playerColumnWidth;
+    private int _playerCapacity;                // rows that fit, "+ New player" included
+    private int _playerScroll;                  // first row shown
+    private RayButton _scrollUp;
+    private RayButton _scrollDown;
+    private RayButton _deleteButton;
+    private TextMeshProUGUI _playerMessage;
+    private PlayerProfile _deleteArmedFor;      // first Delete click waiting for the second
+    private float _deleteArmedUntil;
+
     private Page _page;
     private readonly StringBuilder _name = new StringBuilder();
-    private string _renaming; // null = adding a new player
+    private PlayerProfile _renaming; // null = adding a new player
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -104,6 +124,9 @@ public class SettingsPage : MonoBehaviour
 
         if (difficulty == null)
             difficulty = FindFirstObjectByType<DifficultySelector>();
+
+        if (players == null)
+            players = FindFirstObjectByType<PlayerProfileStore>();
 
         if (board == null)
             board = GetComponentInChildren<Canvas>(true);
@@ -135,6 +158,7 @@ public class SettingsPage : MonoBehaviour
     {
         SetShown(launcher == null || !launcher.IsSessionRunning);
         RefreshDifficultyRows();
+        RefreshPlayerRows();
     }
 
     void OnEnable()
@@ -146,6 +170,11 @@ public class SettingsPage : MonoBehaviour
         }
         if (difficulty != null)
             difficulty.OnDifficultyChanged += HandleDifficultyChanged;
+        if (players != null)
+        {
+            players.OnPlayerChanged += HandlePlayerChanged;
+            players.OnPlayersChanged += HandlePlayersChanged;
+        }
     }
 
     void OnDisable()
@@ -157,15 +186,45 @@ public class SettingsPage : MonoBehaviour
         }
         if (difficulty != null)
             difficulty.OnDifficultyChanged -= HandleDifficultyChanged;
+        if (players != null)
+        {
+            players.OnPlayerChanged -= HandlePlayerChanged;
+            players.OnPlayersChanged -= HandlePlayersChanged;
+        }
+    }
+
+    void Update()
+    {
+        if (_deleteArmedFor != null && Time.time > _deleteArmedUntil)
+            DisarmDelete();
     }
 
     // ── Session events ────────────────────────────────────────────
 
-    void HandleSessionStarted() => SetShown(false);
+    void HandleSessionStarted()
+    {
+        DisarmDelete();
+        SetShown(false);
+    }
 
     void HandleSessionEnded() => SetShown(true);
 
     void HandleDifficultyChanged(Difficulty _) => RefreshDifficultyRows();
+
+    /// <summary>Only rebuilds if the selected row had to scroll into view: a row click lands
+    /// here mid-click, and just re-marking keeps that button alive.</summary>
+    void HandlePlayerChanged(PlayerProfile _)
+    {
+        DisarmDelete();
+        int scroll = _playerScroll;
+        ScrollToSelected();
+        if (_playerScroll != scroll)
+            RebuildPlayerRows();
+        else
+            RefreshPlayerRows();
+    }
+
+    void HandlePlayersChanged() => RebuildPlayerRows();
 
     private void SetShown(bool shown)
     {
@@ -187,15 +246,19 @@ public class SettingsPage : MonoBehaviour
     /// <summary>Opens the keyboard with an empty name, to add a player.</summary>
     public void OpenNewPlayer() => OpenKeyboard(null);
 
-    /// <summary>Opens the keyboard with <paramref name="playerName"/> filled in, to rename it.</summary>
-    public void OpenRename(string playerName) => OpenKeyboard(playerName);
+    /// <summary>Opens the keyboard with <paramref name="player"/>'s name filled in, to rename them.</summary>
+    public void OpenRename(PlayerProfile player) => OpenKeyboard(player);
 
-    private void OpenKeyboard(string renaming)
+    private void OpenKeyboard(PlayerProfile renaming)
     {
+        DisarmDelete();
         _renaming = renaming;
         _name.Clear();
         if (renaming != null)
-            _name.Append(renaming.Length > MaxNameLength ? renaming.Substring(0, MaxNameLength) : renaming);
+        {
+            string current = renaming.displayName ?? "";
+            _name.Append(current.Length > MaxNameLength ? current.Substring(0, MaxNameLength) : current);
+        }
         _nameMessage.text = "";
         RefreshNameField();
         ShowPage(Page.NewPlayer);
@@ -223,6 +286,8 @@ public class SettingsPage : MonoBehaviour
         RefreshNameField();
     }
 
+    /// <summary>A refused name (empty, duplicate, session running) keeps the keyboard open
+    /// with the reason on its message line.</summary>
     private void Save()
     {
         string playerName = _name.ToString().Trim();
@@ -232,9 +297,25 @@ public class SettingsPage : MonoBehaviour
             return;
         }
 
-        if (NameSaved == null)
-            Debug.Log($"[SettingsPage] Name saved: \"{playerName}\" — no PlayerProfileStore listening yet.");
-        NameSaved?.Invoke(_renaming, playerName);
+        if (players == null)
+        {
+            Debug.Log($"[SettingsPage] Name saved: \"{playerName}\" — no PlayerProfileStore in the scene.");
+            ShowPage(Page.Main);
+            return;
+        }
+
+        if (!players.ValidateName(playerName, _renaming, out string reason))
+        {
+            _nameMessage.text = reason;
+            return;
+        }
+
+        bool saved = _renaming != null ? players.Rename(_renaming, playerName) : players.AddPlayer(playerName);
+        if (!saved)
+        {
+            _nameMessage.text = "Can't change that now";
+            return;
+        }
         ShowPage(Page.Main);
     }
 
@@ -243,6 +324,131 @@ public class SettingsPage : MonoBehaviour
     private void RefreshNameField()
     {
         _nameField.text = $"Name: {_name}_";
+    }
+
+    // ── Players ───────────────────────────────────────────────────
+
+    /// <summary>Row click. A refused change says so on the page instead of doing nothing.</summary>
+    private void PickPlayer(PlayerProfile player)
+    {
+        DisarmDelete();
+        bool changed = players.Select(player);
+        _playerMessage.text = changed ? "" : "Can't change that now";
+        RefreshPlayerRows();
+    }
+
+    private void RenameSelected() => OpenRename(players.CurrentPlayer);
+
+    /// <summary>First click arms it for deleteConfirmSeconds; a second click within that time
+    /// deletes the selected player and all their saved sessions. Otherwise it reverts.</summary>
+    private void DeleteSelected()
+    {
+        PlayerProfile player = players.CurrentPlayer;
+        if (_deleteArmedFor != player)
+        {
+            _deleteArmedFor = player;
+            _deleteArmedUntil = Time.time + deleteConfirmSeconds;
+            _deleteButton.Text = "Confirm";
+            _playerMessage.text = $"Delete {player.displayName}? Click again";
+            return;
+        }
+
+        DisarmDelete();
+        string deletedName = player.displayName;
+        _playerMessage.text = players.Delete(player) ? $"Deleted {deletedName}" : "Can't change that now";
+    }
+
+    private void DisarmDelete()
+    {
+        if (_deleteArmedFor == null) return;
+
+        _deleteArmedFor = null;
+        if (_deleteButton != null)
+            _deleteButton.Text = "Delete";
+        if (_playerMessage != null)
+            _playerMessage.text = "";
+    }
+
+    private void ScrollPlayers(int delta)
+    {
+        _playerScroll += delta;
+        RebuildPlayerRows();
+    }
+
+    /// <summary>Scrolls just enough that the selected player's row is on the board, e.g. a
+    /// new player added at the bottom of a long list.</summary>
+    private void ScrollToSelected()
+    {
+        if (players == null || _playerCapacity <= 0) return;
+
+        int index = IndexOf(players.CurrentPlayer);
+        if (index < 0) return;
+        if (index < _playerScroll)
+            _playerScroll = index;
+        else if (index >= _playerScroll + _playerCapacity)
+            _playerScroll = index - _playerCapacity + 1;
+    }
+
+    private int IndexOf(PlayerProfile player)
+    {
+        IReadOnlyList<PlayerProfile> list = players.Players;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] == player)
+                return i;
+        }
+        return -1;
+    }
+
+    /// <summary>Marks the selected player's row. Run when the rows are built, at Start and on
+    /// every change.</summary>
+    private void RefreshPlayerRows()
+    {
+        if (players == null) return;
+        foreach (var row in _playerButtons)
+            row.button.SetSelected(row.player == players.CurrentPlayer);
+    }
+
+    /// <summary>Redraws the player rows: one per player, then "+ New player". Once they outgrow
+    /// the column, a window of them shows with UP / DN on the right. The scroll buttons live
+    /// outside the rebuilt container, so clicking one never destroys it mid-click.</summary>
+    private void RebuildPlayerRows()
+    {
+        if (_playerRows == null) return;
+
+        foreach (Transform child in _playerRows)
+            Destroy(child.gameObject);
+        _playerButtons.Clear();
+
+        IReadOnlyList<PlayerProfile> list = players.Players;
+        int total = list.Count + 1;
+        bool scrolling = total > _playerCapacity;
+        _playerScroll = scrolling ? Mathf.Clamp(_playerScroll, 0, total - _playerCapacity) : 0;
+        _scrollUp.gameObject.SetActive(scrolling);
+        _scrollDown.gameObject.SetActive(scrolling);
+
+        float rowWidth = scrolling ? _playerColumnWidth - keySize - gap : _playerColumnWidth;
+        int shown = Mathf.Min(total, _playerCapacity);
+        for (int i = 0; i < shown; i++)
+        {
+            int index = _playerScroll + i;
+            Vector2 topLeft = _playerRowsTopLeft + new Vector2(0f, i * (keySize + gap));
+            Vector2 size = new Vector2(rowWidth, keySize);
+
+            if (index < list.Count)
+            {
+                PlayerProfile player = list[index];
+                RayButton button = CreateButton(_playerRows, player.displayName, topLeft, size,
+                                                () => PickPlayer(player), dimWhenIdle: true);
+                _playerButtons.Add((player, button));
+            }
+            else
+            {
+                CreateButton(_playerRows, "+ New player", topLeft, size, OpenNewPlayer);
+            }
+        }
+
+        RefreshPlayerRows();
     }
 
     // ── Difficulty ────────────────────────────────────────────────
@@ -297,10 +503,53 @@ public class SettingsPage : MonoBehaviour
                     UiPalette.Chalk, TextAlignmentOptions.Left);
         y += fontSize * 1.4f + gap;
 
-        CreateButton(_mainPage, "+ New player", new Vector2(gap * 2f, y), new Vector2(columnWidth, keySize),
-                     OpenNewPlayer);
+        if (players != null)
+            BuildPlayerColumn(gap * 2f, y, columnWidth);
+        else
+            CreateButton(_mainPage, "+ New player", new Vector2(gap * 2f, y), new Vector2(columnWidth, keySize),
+                         OpenNewPlayer);
 
         BuildDifficultyColumn(w / 2f + gap, columnWidth);
+    }
+
+    /// <summary>PLAYER column below its title: the player rows (rebuilt by RebuildPlayerRows),
+    /// a message line, and [ Rename ] [ Delete ] along the bottom of the board.</summary>
+    private void BuildPlayerColumn(float x, float top, float columnWidth)
+    {
+        float step = keySize + gap;
+        float actionY = BoardHeight - gap * 2f - keySize;
+        float messageY = actionY - gap - fontSize * 1.2f;
+
+        _playerRowsTopLeft = new Vector2(x, top);
+        _playerColumnWidth = columnWidth;
+        _playerCapacity = Mathf.Max(2, Mathf.FloorToInt((messageY - top) / step));
+
+        _playerRows = CreateRect("Player rows", _mainPage);
+        Stretch(_playerRows);
+
+        // UP / DN rather than ▲ / ▼: the default TMP font may not have those glyphs.
+        float scrollX = x + columnWidth - keySize;
+        _scrollUp = CreateButton(_mainPage, "UP", new Vector2(scrollX, top), new Vector2(keySize, keySize),
+                                 () => ScrollPlayers(-1));
+        _scrollDown = CreateButton(_mainPage, "DN", new Vector2(scrollX, top + (_playerCapacity - 1) * step),
+                                   new Vector2(keySize, keySize), () => ScrollPlayers(1));
+
+        _playerMessage = CreateLabel(_mainPage, "", new Vector2(x, messageY),
+                                     new Vector2(columnWidth, fontSize * 1.2f), UiPalette.Smoke,
+                                     TextAlignmentOptions.Left);
+        // "Delete <12 chars>? Click again" can outgrow the column at full size.
+        _playerMessage.enableAutoSizing = true;
+        _playerMessage.fontSizeMin = fontSize * 0.5f;
+        _playerMessage.fontSizeMax = fontSize;
+
+        float actionWidth = (columnWidth - gap) / 2f;
+        CreateButton(_mainPage, "Rename", new Vector2(x, actionY), new Vector2(actionWidth, keySize),
+                     RenameSelected);
+        _deleteButton = CreateButton(_mainPage, "Delete", new Vector2(x + actionWidth + gap, actionY),
+                                     new Vector2(actionWidth, keySize), DeleteSelected);
+
+        ScrollToSelected();
+        RebuildPlayerRows();
     }
 
     /// <summary>DIFFICULTY column on the right half of the Main page: one pick-one row per level.
@@ -395,16 +644,15 @@ public class SettingsPage : MonoBehaviour
 
     private float BoardWidth => _boardRect.rect.width;
 
+    private float BoardHeight => _boardRect.rect.height;
+
     private float RowStart(float rowWidth) => (BoardWidth - rowWidth) / 2f;
 
     /// <summary>A full-board page container.</summary>
     private RectTransform CreatePage(string name)
     {
         RectTransform page = CreateRect($"Page {name}", _boardRect);
-        page.anchorMin = Vector2.zero;
-        page.anchorMax = Vector2.one;
-        page.offsetMin = Vector2.zero;
-        page.offsetMax = Vector2.zero;
+        Stretch(page);
         return page;
     }
 
@@ -451,6 +699,14 @@ public class SettingsPage : MonoBehaviour
         rect.SetParent(parent, false);
         rect.localScale = Vector3.one;
         return rect;
+    }
+
+    private static void Stretch(RectTransform rect)
+    {
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
     }
 
     private static void PlaceTopLeft(RectTransform rect, Vector2 topLeft, Vector2 size)
