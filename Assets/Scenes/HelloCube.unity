@@ -1322,7 +1322,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GazeStartTarget
   visualRoot: {fileID: 108915630}
   ringFill: {fileID: 329017396}
-  targetRadius: 0.5
+  gazeCenter: {fileID: 0}
+  targetRadius: 0.8
+  showTrack: 1
+  trackColor: {r: 1, g: 1, b: 1, a: 0.25}
   dwellSeconds: 3
   drainSpeedMultiplier: 2
   rearmDelay: 2
@@ -1821,7 +1824,7 @@ Transform:
   m_GameObject: {fileID: 825625399}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: -0.30070576, z: 0, w: 0.953717}
-  m_LocalPosition: {x: -1.5, y: 1.5, z: 2.4}
+  m_LocalPosition: {x: -2.047, y: 1.66, z: 2.017}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -2228,6 +2231,7 @@ MonoBehaviour:
   rememberSelection: 1
   launcher: {fileID: 0}
   crowd: {fileID: 0}
+  players: {fileID: 0}
 --- !u!114 &866954170
 MonoBehaviour:
   m_ObjectHideFlags: 0
