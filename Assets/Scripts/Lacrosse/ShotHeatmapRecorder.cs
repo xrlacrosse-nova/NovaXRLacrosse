@@ -43,8 +43,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
     [Range(4f, 200f)]
     public float dotSize = 26f;
 
-    [Tooltip("Draw the per-shot dots and × marks (live readout only; the Lifetime view never has dots).")]
-    public bool showDots = true;
+    [Tooltip("Draw the per-shot dots and × marks on top of the gradient (live readout only; the " +
+             "Lifetime view never has dots). Off by default so the gradient reads on its own.")]
+    public bool showDots = false;
 
     [Tooltip("Orange (goals) and blue (saves) instead of red and green, for the gradient, legend, " +
              "dots and × marks. Overrides scoreColor/saveColor while on.")]
@@ -58,11 +59,11 @@ public class ShotHeatmapRecorder : MonoBehaviour
     [Tooltip("Blur radius (σ) in normalized gate units, where the gate spans -1 to 1. Smaller = " +
              "sharper spots, bigger = smoother.")]
     [Range(0.05f, 0.5f)]
-    public float gradientRadius = 0.18f;
+    public float gradientRadius = 0.25f;
 
     [Tooltip("Brightness curve. Below 1 lifts faint areas; 1 = brightness straight from shot count.")]
     [Range(0.2f, 1f)]
-    public float gradientGamma = 0.6f;
+    public float gradientGamma = 0.45f;
 
     [Tooltip("All Sessions only: weight = recencyDecay ^ sessions ago, so older sessions fade. " +
              "1 = every session counts equally.")]
@@ -79,8 +80,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
     public int maxGradientShots = 500;
 
     [Header("Gradient Legend")]
-    [Tooltip("Thin Goals → Saves color strip under the cage, built at runtime.")]
-    public bool drawGradientLegend = false;
+    [Tooltip("Thin Goals → Saves color strip under the cage, built at runtime. On by default: " +
+             "without the dots it's the only key to the colors.")]
+    public bool drawGradientLegend = true;
 
     [Tooltip("Gap (UI units) between the bottom of the box (or the bottom bar) and the strip. " +
              "Raise it if the strip overlaps the headline.")]
@@ -822,8 +824,9 @@ public class ShotHeatmapRecorder : MonoBehaviour
     {
         RectTransform rect = CreateRect(name, parent, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
         TextMeshProUGUI label = rect.gameObject.AddComponent<TextMeshProUGUI>();
-        if (headlineText != null)
-            label.font = headlineText.font;
+        TextMeshProUGUI fontSource = headlineText != null ? headlineText : quadrantBreakdownText;
+        if (fontSource != null)
+            label.font = fontSource.font;
         label.text = text;
         label.alignment = alignment;
         label.color = UiPalette.Chalk;
