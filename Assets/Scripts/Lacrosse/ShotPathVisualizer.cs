@@ -9,6 +9,7 @@ using UnityEngine.Rendering;
 ///
 /// Shown when the recorder fires OnPathsReady (session end) and cleared on OnPathsCleared
 /// (session start) — the heatmap's lifetime, never during play. No input handling of any kind.
+/// SessionHistory can draw a saved session's paths instead (ShowPaths) and switch back (ShowLive).
 ///
 /// It catches up in OnEnable (draws or clears to match the recorder), so it still works if its
 /// own GameObject was inactive when an event fired — but an always-active GameObject (e.g. the
@@ -151,6 +152,29 @@ public class ShotPathVisualizer : MonoBehaviour
 
         if (_root != null)
             Destroy(_root.gameObject);
+    }
+
+    // ── Public API ────────────────────────────────────────────────
+
+    /// <summary>Replay (Player_Session_History_Plan.md): draws <paramref name="paths"/> (world
+    /// space) in place of the recorder's. The recorder's next OnPathsReady / OnPathsCleared (or
+    /// ShowLive) replaces them.</summary>
+    public void ShowPaths(IReadOnlyList<ShotPathRecorder.ShotPath> paths)
+    {
+        if (paths == null)
+            ClearDrawn();
+        else
+            HandlePathsReady(paths);
+    }
+
+    /// <summary>Back to the recorder's paths: the last live session's streaks if they're
+    /// showing, otherwise nothing.</summary>
+    public void ShowLive()
+    {
+        if (recorder != null && recorder.PathsShown)
+            HandlePathsReady(recorder.Paths);
+        else
+            ClearDrawn();
     }
 
     // ── Display ──────────────────────────────────────────────────

@@ -22,7 +22,10 @@ public class CrowdAmbience : MonoBehaviour
              "Assets/Audio/CrowdBoos.wav")]
     public AudioClip goalGroan;
 
-    private const float Volume = 0.8f;
+    [Tooltip("Crowd volume. 0 = silent. Set by DifficultySelector; a change takes effect at the " +
+             "next session start.")]
+    [Range(0f, 1f)]
+    public float volume = 0.8f;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -42,7 +45,7 @@ public class CrowdAmbience : MonoBehaviour
         _source.playOnAwake = false;
         _source.loop = true;
         _source.spatialBlend = 0f; // 2D — reads as "the whole environment"
-        _source.volume = Volume;
+        _source.volume = volume;
     }
 
     void OnEnable()
@@ -91,6 +94,7 @@ public class CrowdAmbience : MonoBehaviour
     void HandleSessionStarted()
     {
         _sessionActive = true;
+        _source.volume = volume; // picks up a difficulty change made between sessions
         Play(saveCheer);
     }
 

@@ -2,11 +2,10 @@ using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using MagicLeap.Examples;
 
 /// <summary>
 /// Runs a simulation-style shooting session: the ball sits idle until the player starts a session
-/// (controller trigger, or Space in the Unity Editor), waits through a pre-start countdown, then
+/// (staring at the START target — GazeStartTarget — or Space in the Unity Editor), waits through a pre-start countdown, then
 /// fires a fixed number of shots at randomized quadrants of the goal gate defined in GoalDetector
 /// (must be on the same GameObject), spaced by a randomized interval. Supports two aim modes:
 ///   - RandomInQuadrant: a uniformly-random point inside the quadrant (no two shots alike).
@@ -21,8 +20,8 @@ using MagicLeap.Examples;
 /// Setup:
 ///   1. Attach this script to the ball GameObject that also has GoalDetector + Rigidbody.
 ///   2. Set LaunchOrigin to a Transform positioned where shots come from (e.g. an empty at player position).
-///   3. Pick an AimMode and press Play. The ball stays idle until the start trigger fires
-///      (controller trigger button, or Space bar in the Editor), then a session of ShotsPerSession
+///   3. Pick an AimMode and press Play. The ball stays idle until a session is started
+///      (GazeStartTarget calls TryStartSession(), or Space bar in the Editor), then a session of ShotsPerSession
 ///      shots runs automatically. Alternatively, call LaunchBall() directly from any other script
 ///      or Unity Event to fire a single shot outside the session flow.
 ///   4. Optional: drag the shooter avatar (with ShooterAnimationController) into Shooter Animation.
@@ -68,6 +67,12 @@ public class RandomLauncher : MonoBehaviour
              "slow to reach the target at all.")]
     public float launchSpeed = 18f;
 
+    [Tooltip("Each shot's speed is Launch Speed ± this much (m/s), picked at random, so the goalie " +
+             "can't time a fixed speed. Capped at half of Launch Speed. 0 = every shot at Launch " +
+             "Speed. Set by DifficultySelector.")]
+    [Min(0f)]
+    public float launchSpeedVariance = 0f;
+
     [Tooltip("Use Unity's Rigidbody gravity (Physics.gravity) for the whole flight, with the " +
              "launch solved to arc onto the target. Off = straight, gravity-free flight " +
              "with custom gravity only after the goal plane (old behavior).")]
@@ -98,7 +103,7 @@ public class RandomLauncher : MonoBehaviour
     [Min(1)]
     public int shotsPerSession = 3;
 
-    [Tooltip("Seconds after the start trigger before the first shot fires. Randomized per session.")]
+    [Tooltip("Seconds after the session starts before the first shot fires. Randomized per session.")]
     [Min(0f)]
     public float minPreStartDelay = 10f;
     [Min(0f)]
@@ -119,6 +124,10 @@ public class RandomLauncher : MonoBehaviour
     [Tooltip("TextMeshPro label used for GET READY / countdown digits / GO!. Leave unassigned to disable.")]
     public TextMeshProUGUI countdownText;
 
+    [Tooltip("Shown smaller on a second line under GET READY in the countdown, e.g. 'College'. " +
+             "Empty = plain GET READY. Set by DifficultySelector.")]
+    public string readyLabel = "";
+
     // ── Private ───────────────────────────────────────────────────
 
     private Rigidbody _rb;
@@ -131,7 +140,6 @@ public class RandomLauncher : MonoBehaviour
 
     // session state
     private bool _sessionRunning = false;
-    private bool _controllerTriggerSubscribed = false;
     private int _shotsFiredThisSession = 0;
 
     // shot waiting on the shooter animation's release frame
@@ -157,6 +165,20 @@ public class RandomLauncher : MonoBehaviour
     private Quadrant _lastQuadrant;
 
     // ── Events ───────────────────────────────────────────────────
+
+    /// <summary>True from the start of the pre-start countdown until the session ends.</summary>
+    public bool IsSessionRunning => _sessionRunning;
+
+    /// <summary>Quadrant the most recent shot was aimed at. Set in LaunchToward before
+    /// GoalDetector.OnShotLaunched fires, so a listener to that event reads this shot's aim.</summary>
+    public Quadrant LastAimQuadrant => _lastQuadrant;
+
+    /// <summary>Where the most recent shot was aimed, normalized to the gate ([-1, 1],
+    /// QuadrantMath.NormalizeToGate). Set at the same time as LastAimQuadrant.</summary>
+    public Vector2 LastAimNormalized { get; private set; }
+
+    /// <summary>Release speed (m/s) of the most recent shot, after the per-shot variance.</summary>
+    public float LastLaunchSpeed { get; private set; }
 
     /// <summary>Fired when a new session begins (right as the pre-start countdown starts).</summary>
     public event System.Action OnSessionStarted;
@@ -196,22 +218,6 @@ public class RandomLauncher : MonoBehaviour
             _floorBoundary.OnDespawned += HandleDespawned;
         if (shooterAnimation != null)
             shooterAnimation.OnRelease += HandleShooterRelease;
-
-        // Don't touch MagicLeapController.Instance in Awake() — it needs an InputActionManager
-        // already present in the scene, which may not be true that early. Try here instead, and
-        // fail gracefully (e.g. testing in the Editor without a full ML rig set up) so the Space
-        // bar fallback below still works.
-        try
-        {
-            MagicLeapController.Instance.TriggerPressed += HandleStartTriggerPressed;
-            _controllerTriggerSubscribed = true;
-        }
-        catch (System.NullReferenceException)
-        {
-            Debug.LogWarning("[RandomLauncher] No MagicLeapController input available (no InputActionManager " +
-                              "in scene) — controller-trigger start is disabled this session; use the Space " +
-                              "bar in the Editor instead.");
-        }
     }
 
     void OnDisable()
@@ -222,12 +228,6 @@ public class RandomLauncher : MonoBehaviour
             _floorBoundary.OnDespawned -= HandleDespawned;
         if (shooterAnimation != null)
             shooterAnimation.OnRelease -= HandleShooterRelease;
-
-        if (_controllerTriggerSubscribed)
-        {
-            MagicLeapController.Instance.TriggerPressed -= HandleStartTriggerPressed;
-            _controllerTriggerSubscribed = false;
-        }
     }
 
     void Start()
@@ -242,7 +242,12 @@ public class RandomLauncher : MonoBehaviour
         if (_floorBoundary != null)
             _floorBoundary.Hide();
 
-        Debug.Log("[RandomLauncher] Waiting for start trigger (controller trigger"
+        // The trigger no longer starts a session, so on device the START target is the only way in.
+        if (FindFirstObjectByType<GazeStartTarget>() == null)
+            Debug.LogWarning("[RandomLauncher] No GazeStartTarget in the scene — on device there's no way to " +
+                             "start a session. Add a StartTarget (see Plans/Current/Input_Styles_Plan.md).");
+
+        Debug.Log("[RandomLauncher] Waiting for session start (gaze at START"
 #if UNITY_EDITOR
                   + ", or Space in the Editor"
 #endif
@@ -324,14 +329,11 @@ public class RandomLauncher : MonoBehaviour
 
     // ── Session start ────────────────────────────────────────────
 
-    private void HandleStartTriggerPressed(InputAction.CallbackContext ctx)
-    {
-        TryStartSession();
-    }
-
     /// <summary>Starts a new session (pre-start countdown, then ShotsPerSession shots) if one
-    /// isn't already running. Safe to call from any start-trigger source.</summary>
-    private void TryStartSession()
+    /// isn't already running. Safe to call from any start source (GazeStartTarget, Space in the
+    /// Editor). The controller trigger no longer starts a session: it only clicks the settings
+    /// page, so a stray pull can't start one before the goalie is ready.</summary>
+    public void TryStartSession()
     {
         if (_sessionRunning) return;
         StartCoroutine(RunSession());
@@ -469,6 +471,8 @@ public class RandomLauncher : MonoBehaviour
         _lastTarget = target;
         _hasTarget = true;
         _lastQuadrant = quadrant;
+        LastAimNormalized = QuadrantMath.NormalizeToGate(
+            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, target);
 
         // ── 4. Compute launch velocity ───────────────────────────
         // Gravity turns on only here, with the launch velocity, so the ball can't pick up a
@@ -476,22 +480,28 @@ public class RandomLauncher : MonoBehaviour
         // With BallFlight, the aim is corrected for drag and spin (Plans/Past/Ball_Flight_Physics_Plan.md).
         // Without gravity there's no spin, and drag only slows the straight shot, so the straight
         // aim stays exact.
+        // Speed varies per shot (launchSpeedVariance) so the goalie can't time a fixed speed.
+        // The spread is capped at half of launchSpeed, so a big variance on a slow base speed
+        // can't roll a shot too slow to reach the goal.
+        float spread = Mathf.Min(launchSpeedVariance, launchSpeed * 0.5f);
+        float shotSpeed = Mathf.Max(1f, launchSpeed + Random.Range(-spread, spread));
+
         Vector3 launchVelocity;
         Vector3 spin = Vector3.zero;
         float flightTime;
         if (useUnityGravity && _ballFlight != null)
         {
-            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, launchSpeed, out spin);
+            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, shotSpeed, out spin);
             flightTime = 0f;   // set from the prediction below
         }
         else if (useUnityGravity)
         {
             launchVelocity = QuadrantMath.ComputeBallisticLaunchVelocity(
-                origin, target, launchSpeed, Physics.gravity, Time.fixedDeltaTime, out flightTime);
+                origin, target, shotSpeed, Physics.gravity, Time.fixedDeltaTime, out flightTime);
         }
         else
         {
-            launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, launchSpeed);
+            launchVelocity = QuadrantMath.ComputeLaunchVelocity(origin, target, shotSpeed);
             flightTime = Vector3.Distance(origin, target) / Mathf.Max(launchVelocity.magnitude, 0.001f);
         }
 
@@ -506,6 +516,7 @@ public class RandomLauncher : MonoBehaviour
 #endif
 
         _falling = false;
+        LastLaunchSpeed = launchVelocity.magnitude;
 
         _ballFlight?.BeginFlight(spin);
         _goalDetector.OnBallLaunched();
@@ -593,7 +604,12 @@ public class RandomLauncher : MonoBehaviour
     {
         if (_countdownRemaining > 3f)
         {
-            SetLabel("GET READY", UiPalette.Chalk, 0f, animate: false);
+            // Level on its own smaller line: no wider than GET READY, and no '·' glyph that the
+            // countdown font might lack.
+            string ready = string.IsNullOrEmpty(readyLabel)
+                ? "GET READY"
+                : $"GET READY\n<size=60%>{readyLabel}</size>";
+            SetLabel(ready, UiPalette.Chalk, 0f, animate: false);
             return;
         }
 
