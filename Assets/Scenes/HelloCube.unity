@@ -2019,10 +2019,10 @@ MonoBehaviour:
   recencyDecay: 0.85
   gradientResolution: 96
   maxGradientShots: 500
-  drawGradientLegend: 0
-  legendGap: 30
-  legendHeight: 18
-  legendFontSize: 36
+  drawGradientLegend: 1
+  legendGap: 10
+  legendHeight: 15
+  legendFontSize: 15
   heatmapPanel: {fileID: 1587744145}
   headlineText: {fileID: 0}
   cornerLabels:
