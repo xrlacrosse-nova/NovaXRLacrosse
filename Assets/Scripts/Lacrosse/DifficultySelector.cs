@@ -9,9 +9,14 @@ using UnityEngine;
 ///   - Picked on the settings page's DIFFICULTY column (SettingsPage calls SetDifficulty), or
 ///     with this component's context menu in the Editor. No UI of its own.
 ///   - Refused while a session is running (the page is hidden then anyway).
-///   - Remembered between runs in PlayerPrefs unless Remember Selection is off.
+///   - Remembered between runs unless Remember Selection is off. With a PlayerProfileStore,
+///     each player keeps their own (PlayerProfile.difficulty, Player_Session_History_Plan.md
+///     step 5): switching player switches the level, and a player who never picked one keeps
+///     the current level. Without a store, one choice is saved for everyone in PlayerPrefs.
+///     That old shared PlayerPrefs choice is still read once at startup if the selected player
+///     has none yet, so an existing headset keeps its level.
 ///
-/// Setup: add to the ball or a "Difficulty" GameObject. The launcher and crowd are found
+/// Setup: add to the ball or a "Difficulty" GameObject. The launcher, crowd and store are found
 /// automatically if left empty (assumes one of each in the scene).
 /// </summary>
 public class DifficultySelector : MonoBehaviour
@@ -33,6 +38,10 @@ public class DifficultySelector : MonoBehaviour
 
     [Tooltip("Optional. Leave empty to find the CrowdAmbience in the scene.")]
     public CrowdAmbience crowd;
+
+    [Tooltip("Optional. Leave empty to find the PlayerProfileStore in the scene. With one, each " +
+             "player keeps their own difficulty; without, one choice is saved for everyone.")]
+    public PlayerProfileStore players;
 
     private const string PrefsKey = "Difficulty.Selected";
 
@@ -69,8 +78,23 @@ public class DifficultySelector : MonoBehaviour
         if (crowd == null)
             crowd = FindFirstObjectByType<CrowdAmbience>();
 
+        if (players == null)
+            players = FindFirstObjectByType<PlayerProfileStore>();
+
         WarnAboutDuplicates();
         LoadSelection();
+    }
+
+    void OnEnable()
+    {
+        if (players != null)
+            players.OnPlayerChanged += HandlePlayerChanged;
+    }
+
+    void OnDisable()
+    {
+        if (players != null)
+            players.OnPlayerChanged -= HandlePlayerChanged;
     }
 
     void Start()
@@ -94,7 +118,32 @@ public class DifficultySelector : MonoBehaviour
 
         level.ApplyTo(launcher, crowd);
         Debug.Log($"[DifficultySelector] Starting on {level.displayName}.");
+
+        // First run with profiles: the selected player takes on the level they're starting at.
+        if (players != null && !TryParseLevel(players.CurrentPlayer.difficulty, out _))
+            SaveSelection();
+
         OnDifficultyChanged?.Invoke(selected);
+    }
+
+    /// <summary>Switches to the new player's level. One who never picked a level keeps the
+    /// current one, which becomes theirs.</summary>
+    private void HandlePlayerChanged(PlayerProfile player)
+    {
+        if (!rememberSelection || player == null) return;
+
+        if (!TryParseLevel(player.difficulty, out Difficulty theirs))
+        {
+            SaveSelection();
+            return;
+        }
+        if (theirs == selected) return;
+
+        selected = theirs;
+        DifficultyLevel level = FindLevel(theirs);
+        level.ApplyTo(launcher, crowd);
+        Debug.Log($"[DifficultySelector] {player.displayName} plays on {level.displayName}.");
+        OnDifficultyChanged?.Invoke(theirs);
     }
 
     // ── Public API ────────────────────────────────────────────────
@@ -119,12 +168,7 @@ public class DifficultySelector : MonoBehaviour
         LoadSelection();
         selected = difficulty;
         level.ApplyTo(launcher, crowd);
-
-        if (rememberSelection)
-        {
-            PlayerPrefs.SetString(PrefsKey, difficulty.ToString());
-            PlayerPrefs.Save();
-        }
+        SaveSelection();
 
         Debug.Log($"[DifficultySelector] Difficulty set to {level.displayName} — speed {level.launchSpeed} " +
                   $"± {level.launchSpeedVariance} m/s, {level.shotsPerSession} shots.");
@@ -146,18 +190,41 @@ public class DifficultySelector : MonoBehaviour
 
     // ── Private helpers ───────────────────────────────────────────
 
-    /// <summary>Loads the saved choice once (if Remember Selection is on and it's still in the list).</summary>
+    /// <summary>Loads the saved choice once (if Remember Selection is on and it's still in the
+    /// list): the selected player's, else the shared PlayerPrefs one.</summary>
     private void LoadSelection()
     {
         if (_loaded) return;
         _loaded = true;
+        if (!rememberSelection) return;
 
-        if (rememberSelection &&
-            Enum.TryParse(PlayerPrefs.GetString(PrefsKey, ""), out Difficulty saved) &&
-            FindLevel(saved) != null)
+        PlayerProfile player = players != null ? players.CurrentPlayer : null;
+        if (player != null && TryParseLevel(player.difficulty, out Difficulty theirs))
+            selected = theirs;
+        else if (TryParseLevel(PlayerPrefs.GetString(PrefsKey, ""), out Difficulty shared))
+            selected = shared;
+    }
+
+    /// <summary>Saves the current choice: on the selected player with a store, else in the
+    /// shared PlayerPrefs key. Nothing when Remember Selection is off.</summary>
+    private void SaveSelection()
+    {
+        if (!rememberSelection) return;
+
+        if (players != null)
         {
-            selected = saved;
+            players.SetPlayerDifficulty(players.CurrentPlayer, selected.ToString());
+            return;
         }
+
+        PlayerPrefs.SetString(PrefsKey, selected.ToString());
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>A stored difficulty name that's still in the Levels list.</summary>
+    private bool TryParseLevel(string stored, out Difficulty difficulty)
+    {
+        return Enum.TryParse(stored, out difficulty) && FindLevel(difficulty) != null;
     }
 
     private DifficultyLevel FirstLevel()

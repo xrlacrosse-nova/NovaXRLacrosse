@@ -11,7 +11,7 @@ public class PlayerProfile
     public string id;
     public string displayName;      // 1–12 chars, letters, digits and spaces
     public string createdUtc;
-    public string difficulty;       // last chosen difficulty, once DifficultySelector uses it (step 5)
+    public string difficulty;       // last chosen Difficulty enum name, "" until they pick one
 }
 
 /// <summary>profiles.json: every player and the one selected last.</summary>
@@ -194,6 +194,21 @@ public class PlayerProfileStore : MonoBehaviour
         OnPlayersChanged?.Invoke();
         if (selectionChanged)
             OnPlayerChanged?.Invoke(_current);
+        return true;
+    }
+
+    /// <summary>Saves <paramref name="player"/>'s difficulty (a Difficulty enum name), for
+    /// DifficultySelector. Not a list change, so no event fires. Returns false while a session
+    /// is running.</summary>
+    public bool SetPlayerDifficulty(PlayerProfile player, string difficulty)
+    {
+        EnsureLoaded();
+        if (!CanChange("change a player's difficulty")) return false;
+        if (player == null || !_list.players.Contains(player)) return false;
+        if (player.difficulty == difficulty) return true;
+
+        player.difficulty = difficulty;
+        Save();
         return true;
     }
 
