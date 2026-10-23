@@ -706,6 +706,51 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 157865731}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &188054070
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 188054071}
+  - component: {fileID: 188054072}
+  m_Layer: 0
+  m_Name: Players
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &188054071
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 188054070}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1655719300}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &188054072
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 188054070}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b57fc89da64ad5645954b0b851c487e5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerProfileStore
+  launcher: {fileID: 0}
 --- !u!1 &203844586
 GameObject:
   m_ObjectHideFlags: 0
@@ -1780,8 +1825,10 @@ MonoBehaviour:
   keySize: 55
   gap: 8
   fontSize: 28
+  deleteConfirmSeconds: 3
   launcher: {fileID: 0}
   difficulty: {fileID: 0}
+  players: {fileID: 0}
 --- !u!1 &866954152
 GameObject:
   m_ObjectHideFlags: 0
@@ -1804,6 +1851,7 @@ GameObject:
   - component: {fileID: 866954167}
   - component: {fileID: 866954168}
   - component: {fileID: 866954169}
+  - component: {fileID: 866954170}
   m_Layer: 0
   m_Name: LacrosseBall
   m_TagString: Untagged
@@ -2159,6 +2207,20 @@ MonoBehaviour:
   rememberSelection: 1
   launcher: {fileID: 0}
   crowd: {fileID: 0}
+--- !u!114 &866954170
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 866954152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ec2db82f913152a48b90914c80ecf42d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SessionLogger
+  players: {fileID: 0}
+  difficulty: {fileID: 0}
 --- !u!1 &901836324
 GameObject:
   m_ObjectHideFlags: 0
@@ -3401,6 +3463,7 @@ Transform:
   - {fileID: 1431619770}
   - {fileID: 825625400}
   - {fileID: 392214989}
+  - {fileID: 188054071}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1679040415
