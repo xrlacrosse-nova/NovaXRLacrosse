@@ -127,8 +127,7 @@ public class DifficultySelector : MonoBehaviour
         }
 
         Debug.Log($"[DifficultySelector] Difficulty set to {level.displayName} — speed {level.launchSpeed} " +
-                  $"± {level.launchSpeedVariance} m/s, {level.shotsPerSession} shots, " +
-                  $"{level.minShotInterval}-{level.maxShotInterval} s apart.");
+                  $"± {level.launchSpeedVariance} m/s, {level.shotsPerSession} shots.");
         OnDifficultyChanged?.Invoke(difficulty);
         return true;
     }
@@ -204,10 +203,10 @@ public class DifficultySelector : MonoBehaviour
     {
         return new List<DifficultyLevel>
         {
-            //                  difficulty             name           speed var  pad   depth  interval   shots crowd
-            new DifficultyLevel(Difficulty.HighSchool, "High school", 16f, 1.0f, 0.20f, 0.50f, 7f, 10f, 8,  0.3f),
-            new DifficultyLevel(Difficulty.College,    "College",     21f, 1.5f, 0.08f, 0.65f, 5f, 8f,  10, 0.6f),
-            new DifficultyLevel(Difficulty.Pro,        "Pro",         26f, 2.0f, 0.02f, 0.80f, 4f, 6f,  12, 1.0f),
+            //                  difficulty             name           speed var  pad   depth  shots crowd
+            new DifficultyLevel(Difficulty.HighSchool, "High school", 16f, 1.0f, 0.20f, 0.50f, 8,  0.3f),
+            new DifficultyLevel(Difficulty.College,    "College",     21f, 1.5f, 0.08f, 0.65f, 10, 0.6f),
+            new DifficultyLevel(Difficulty.Pro,        "Pro",         26f, 2.0f, 0.02f, 0.80f, 12, 1.0f),
         };
     }
 }

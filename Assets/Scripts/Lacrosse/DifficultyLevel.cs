@@ -41,12 +41,6 @@ public class DifficultyLevel
     [Range(0f, 1f)]
     public float quadrantDepth;
 
-    [Tooltip("Seconds between shots, picked at random in this range.")]
-    [Min(0f)]
-    public float minShotInterval;
-    [Min(0f)]
-    public float maxShotInterval;
-
     [Min(1)]
     public int shotsPerSession;
 
@@ -58,8 +52,7 @@ public class DifficultyLevel
 
     public DifficultyLevel(Difficulty difficulty, string displayName, float launchSpeed,
                            float launchSpeedVariance, float edgePadding, float quadrantDepth,
-                           float minShotInterval, float maxShotInterval, int shotsPerSession,
-                           float crowdVolume)
+                           int shotsPerSession, float crowdVolume)
     {
         this.difficulty = difficulty;
         this.displayName = displayName;
@@ -67,13 +60,12 @@ public class DifficultyLevel
         this.launchSpeedVariance = launchSpeedVariance;
         this.edgePadding = edgePadding;
         this.quadrantDepth = quadrantDepth;
-        this.minShotInterval = minShotInterval;
-        this.maxShotInterval = maxShotInterval;
         this.shotsPerSession = shotsPerSession;
         this.crowdVolume = crowdVolume;
     }
 
-    /// <summary>Copies every value onto the launcher (and the crowd, if there is one).</summary>
+    /// <summary>Copies every value onto the launcher (and the crowd, if there is one). The time
+    /// between shots isn't part of a difficulty: it stays RandomLauncher's own Inspector setting.</summary>
     public void ApplyTo(RandomLauncher launcher, CrowdAmbience crowd)
     {
         if (launcher != null)
@@ -82,8 +74,6 @@ public class DifficultyLevel
             launcher.launchSpeedVariance = launchSpeedVariance;
             launcher.edgePadding = edgePadding;
             launcher.quadrantDepth = quadrantDepth;
-            launcher.minShotInterval = Mathf.Min(minShotInterval, maxShotInterval);
-            launcher.maxShotInterval = Mathf.Max(minShotInterval, maxShotInterval);
             launcher.shotsPerSession = Mathf.Max(1, shotsPerSession);
             launcher.readyLabel = displayName;
         }
