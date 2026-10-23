@@ -13,8 +13,13 @@ using UnityEngine;
 ///   - GetLifetime: all-time totals, summed from index.json alone.
 ///   - Replay: loads one session file and shows it on the existing heatmap and as path
 ///     streaks, as they appeared at its end. CloseReplay brings back the last live session's.
+///   - ReplayLifetime: every shot the player has faced as one heatmap gradient (no dots, no
+///     streaks, every session weighted equally) with all-time totals.
+///   - Feeds the heatmap's All Sessions mode with the player's saved shots (LoadHistory) at
+///     startup and on every player change, so it spans app restarts.
 /// A replay closes on its own when the next session starts (the heatmap and path recorder
-/// clear then) or when a different player is selected.
+/// clear then) or when a different player is selected. Every saved shot of a player is read
+/// at most once until a new session is saved (cached).
 ///
 /// Setup: add to the "Players" GameObject. Everything is found automatically if left empty.
 /// </summary>
@@ -66,9 +71,17 @@ public class SessionHistory : MonoBehaviour
 
     private GoalDetector _goalDetector;
     private string _replayingId;   // sessionId being replayed, null when live
+    private bool _lifetimeShown;
 
-    /// <summary>The sessionId being replayed, or null when the live readout is showing.</summary>
+    // Every saved shot of one player, oldest first (session = index in index.json).
+    private string _cachedPlayerId;
+    private List<RecordedShot> _cachedShots;
+
+    /// <summary>The sessionId being replayed, or null when the live readout (or Lifetime) is showing.</summary>
     public string ReplayingSessionId => _replayingId;
+
+    /// <summary>True while the Lifetime view is on the heatmap.</summary>
+    public bool IsLifetimeShown => _lifetimeShown;
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -94,28 +107,61 @@ public class SessionHistory : MonoBehaviour
             difficulty = FindFirstObjectByType<DifficultySelector>();
     }
 
+    void Start()
+    {
+        FeedHeatmapHistory();
+    }
+
     void OnEnable()
     {
         if (launcher != null)
+        {
             launcher.OnSessionStarted += HandleSessionStarted;
+            launcher.OnSessionEnded += HandleSessionEnded;
+        }
         if (players != null)
+        {
             players.OnPlayerChanged += HandlePlayerChanged;
+            players.OnPlayersChanged += HandlePlayersChanged;
+        }
     }
 
     void OnDisable()
     {
         if (launcher != null)
+        {
             launcher.OnSessionStarted -= HandleSessionStarted;
+            launcher.OnSessionEnded -= HandleSessionEnded;
+        }
         if (players != null)
+        {
             players.OnPlayerChanged -= HandlePlayerChanged;
+            players.OnPlayersChanged -= HandlePlayersChanged;
+        }
     }
 
     /// <summary>The heatmap and path recorder clear themselves at session start, which ends
     /// the replay too; only the state here needs resetting.</summary>
-    private void HandleSessionStarted() => _replayingId = null;
+    private void HandleSessionStarted()
+    {
+        _replayingId = null;
+        _lifetimeShown = false;
+    }
 
-    /// <summary>A replay belongs to the player who was selected.</summary>
-    private void HandlePlayerChanged(PlayerProfile _) => CloseReplay();
+    /// <summary>SessionLogger has just saved a new file, so the cached shots are stale. The
+    /// heatmap adds the session to its own All Sessions history, so it isn't reloaded.</summary>
+    private void HandleSessionEnded() => _cachedShots = null;
+
+    /// <summary>A replay belongs to the player who was selected; the All Sessions history
+    /// switches to the new player's.</summary>
+    private void HandlePlayerChanged(PlayerProfile _)
+    {
+        CloseReplay();
+        FeedHeatmapHistory();
+    }
+
+    /// <summary>A delete can remove the cached player's files.</summary>
+    private void HandlePlayersChanged() => _cachedShots = null;
 
     // ── Reading ───────────────────────────────────────────────────
 
@@ -223,16 +269,42 @@ public class SessionHistory : MonoBehaviour
             pathVisualizer.ShowPaths(ToWorldPaths(session));
 
         _replayingId = session.sessionId;
+        _lifetimeShown = false;
         Debug.Log($"[SessionHistory] Replaying {summary.file}: {session.saves} of {session.shots.Count} saved.");
         return true;
     }
 
-    /// <summary>Hides the replay and brings back the last live session's heatmap and path
-    /// streaks (not an empty view).</summary>
+    /// <summary>Lifetime view: every shot <paramref name="player"/> has faced as one heatmap
+    /// gradient, every session weighted equally, all-time totals on the labels. No dots and no
+    /// path streaks (hundreds of either would be unreadable). Returns false while a session is
+    /// running or if there's no heatmap.</summary>
+    public bool ReplayLifetime(PlayerProfile player)
+    {
+        if (launcher != null && launcher.IsSessionRunning)
+        {
+            Debug.Log("[SessionHistory] Can't show Lifetime during a session — refused.");
+            return false;
+        }
+        if (heatmap == null || player == null) return false;
+
+        List<RecordedShot> shots = LoadAllShots(player);
+        heatmap.ShowLifetime(shots);
+        if (pathVisualizer != null)
+            pathVisualizer.ShowPaths(null);
+
+        _replayingId = null;
+        _lifetimeShown = true;
+        Debug.Log($"[SessionHistory] Showing Lifetime for {player.displayName}: {shots.Count} shots.");
+        return true;
+    }
+
+    /// <summary>Hides the replay (session or Lifetime) and brings back the last live
+    /// session's heatmap and path streaks (not an empty view).</summary>
     public void CloseReplay()
     {
-        if (_replayingId == null) return;
+        if (_replayingId == null && !_lifetimeShown) return;
         _replayingId = null;
+        _lifetimeShown = false;
 
         if (heatmap != null)
             heatmap.ShowLive();
@@ -268,6 +340,45 @@ public class SessionHistory : MonoBehaviour
     }
 
     // ── Private helpers ───────────────────────────────────────────
+
+    /// <summary>Hands the selected player's saved shots to the heatmap's All Sessions mode,
+    /// so its running tally and gradient cover their real history, not just this run.</summary>
+    private void FeedHeatmapHistory()
+    {
+        if (heatmap == null || players == null) return;
+
+        List<RecordedShot> shots = LoadAllShots(players.CurrentPlayer);
+        heatmap.LoadHistory(shots);
+        Debug.Log($"[SessionHistory] Loaded {shots.Count} saved shots for {players.CurrentPlayer.displayName} " +
+                  "into the heatmap's All Sessions history.");
+    }
+
+    /// <summary>Every saved shot of <paramref name="player"/>, oldest session first, each
+    /// stamped with its session's place in index.json (what All Sessions fades by). Reads
+    /// each session file once; the result is cached until a session is saved or a player is
+    /// added, renamed or deleted. Unreadable files are skipped (with a warning).</summary>
+    private List<RecordedShot> LoadAllShots(PlayerProfile player)
+    {
+        if (player == null) return new List<RecordedShot>();
+        if (_cachedShots != null && _cachedPlayerId == player.id) return _cachedShots;
+
+        var shots = new List<RecordedShot>();
+        List<SessionSummary> sessions = SessionFiles.LoadIndex(player.id).sessions;
+        int sessionIndex = 0;
+        foreach (SessionSummary summary in sessions)
+        {
+            SessionRecord session = LoadSession(player, summary);
+            if (session == null) continue;
+
+            foreach (ShotRecord shot in session.shots)
+                shots.Add(new RecordedShot(shot.resultNormalized, shot.outcome == ShotRecord.Goal, sessionIndex));
+            sessionIndex++;
+        }
+
+        _cachedPlayerId = player.id;
+        _cachedShots = shots;
+        return shots;
+    }
 
     private static SessionRecord LoadSession(PlayerProfile player, SessionSummary summary)
     {

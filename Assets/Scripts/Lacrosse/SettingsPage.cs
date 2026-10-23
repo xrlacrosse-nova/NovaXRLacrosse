@@ -125,6 +125,8 @@ public class SettingsPage : MonoBehaviour
     private readonly List<(SessionSummary session, RayButton button)> _historyButtons =
         new List<(SessionSummary, RayButton)>();
     private readonly List<SessionSummary> _historySessions = new List<SessionSummary>();
+    private RayButton _lifetimeButton;          // first row on every page, while there are sessions
+    private string _lifetimeText = "";
     private Vector2 _historyRowsTopLeft;
     private float _historyRowWidth;
     private int _historyCapacity;               // session rows per page
@@ -510,6 +512,7 @@ public class SettingsPage : MonoBehaviour
         _historyPageIndex = 0;
         _historyTitle.text = $"{player.displayName}: History";
         _historyTrend.text = TrendLine(player);
+        _lifetimeText = LifetimeLine(player);
 
         ShowPage(Page.History); // before building, so the rows' RayButtons size their colliders
         RebuildHistoryRows();
@@ -539,23 +542,39 @@ public class SettingsPage : MonoBehaviour
         RefreshHistoryRows();
     }
 
-    /// <summary>Marks the session being replayed.</summary>
+    /// <summary>Lifetime row click: shows the all-time gradient, or closes it if it's showing.</summary>
+    private void PickLifetime()
+    {
+        if (history.IsLifetimeShown)
+            history.CloseReplay();
+        else if (!history.ReplayLifetime(players.CurrentPlayer))
+            _historyTrend.text = "Couldn't open Lifetime";
+        RefreshHistoryRows();
+    }
+
+    /// <summary>Marks the session (or Lifetime) being replayed.</summary>
     private void RefreshHistoryRows()
     {
+        if (_lifetimeButton != null)
+            _lifetimeButton.SetSelected(history.IsLifetimeShown);
         foreach (var row in _historyButtons)
             row.button.SetSelected(row.session.sessionId == history.ReplayingSessionId);
     }
 
-    /// <summary>Redraws one page of session rows, e.g. "Oct 21  14:30   6 of 8 saved   College".
-    /// Older / newer only show when there's a page that way.</summary>
+    /// <summary>Redraws one page: the Lifetime row first (while there are sessions), then session
+    /// rows, e.g. "Oct 21  14:30   6 of 8 saved   College". Older / newer only show when there's
+    /// a page that way.</summary>
     private void RebuildHistoryRows()
     {
         foreach (Transform child in _historyRows)
             Destroy(child.gameObject);
         _historyButtons.Clear();
+        _lifetimeButton = null;
 
         int count = _historySessions.Count;
-        int pages = Mathf.Max(1, Mathf.CeilToInt(count / (float)_historyCapacity));
+        bool hasLifetime = count > 0;
+        int sessionRows = Mathf.Max(1, _historyCapacity - (hasLifetime ? 1 : 0));
+        int pages = Mathf.Max(1, Mathf.CeilToInt(count / (float)sessionRows));
         _historyPageIndex = Mathf.Clamp(_historyPageIndex, 0, pages - 1);
 
         _historyPageLabel.text = pages > 1 ? $"({_historyPageIndex + 1} / {pages})" : "";
@@ -569,15 +588,20 @@ public class SettingsPage : MonoBehaviour
             return;
         }
 
-        int first = _historyPageIndex * _historyCapacity;
-        for (int i = 0; i < _historyCapacity && first + i < count; i++)
+        float step = keySize + gap;
+        _lifetimeButton = CreateButton(_historyRows, _lifetimeText, _historyRowsTopLeft,
+                                       new Vector2(_historyRowWidth, keySize), PickLifetime,
+                                       dimWhenIdle: true, alignment: TextAlignmentOptions.Left);
+
+        int first = _historyPageIndex * sessionRows;
+        for (int i = 0; i < sessionRows && first + i < count; i++)
         {
             SessionSummary session = _historySessions[first + i];
             string level = history.LevelName(session.difficulty);
             string text = $"{SessionHistory.StartLabel(session)}   {session.saves} of {session.shots} saved" +
                           (level.Length > 0 ? $"   {level}" : "");
 
-            Vector2 topLeft = _historyRowsTopLeft + new Vector2(0f, i * (keySize + gap));
+            Vector2 topLeft = _historyRowsTopLeft + new Vector2(0f, (i + 1) * step);
             RayButton button = CreateButton(_historyRows, text, topLeft, new Vector2(_historyRowWidth, keySize),
                                             () => PickSession(session), dimWhenIdle: true,
                                             alignment: TextAlignmentOptions.Left);
@@ -602,6 +626,14 @@ public class SettingsPage : MonoBehaviour
         if (t.hasWorst)
             line += $"   Worst: {ShotHeatmapRecorder.PositionName(t.worst)} {Mathf.RoundToInt(t.worstRate * 100f)}%";
         return line;
+    }
+
+    /// <summary>"Lifetime   87 of 132 saved   14 sessions", from index.json alone.</summary>
+    private string LifetimeLine(PlayerProfile player)
+    {
+        SessionHistory.Lifetime life = history.GetLifetime(player);
+        string sessions = life.sessions == 1 ? "1 session" : $"{life.sessions} sessions";
+        return $"Lifetime   {life.saves} of {life.shots} saved   {sessions}";
     }
 
     private static string Percent(int part, int whole) =>
