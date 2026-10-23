@@ -2011,6 +2011,18 @@ MonoBehaviour:
   scoreColor: {r: 1, g: 0, b: 0, a: 1}
   saveColor: {r: 0, g: 1, b: 0, a: 1}
   dotSize: 15
+  showDots: 0
+  colorblindSafe: 0
+  gradientMode: 1
+  gradientRadius: 0.5
+  gradientGamma: 0.45
+  recencyDecay: 0.85
+  gradientResolution: 96
+  maxGradientShots: 500
+  drawGradientLegend: 1
+  legendGap: 30
+  legendHeight: 18
+  legendFontSize: 36
   heatmapPanel: {fileID: 1587744145}
   headlineText: {fileID: 0}
   cornerLabels:
@@ -2125,8 +2137,6 @@ MonoBehaviour:
     launchSpeedVariance: 1
     edgePadding: 0.2
     quadrantDepth: 0.5
-    minShotInterval: 7
-    maxShotInterval: 10
     shotsPerSession: 8
     crowdVolume: 0.3
   - difficulty: 1
@@ -2135,8 +2145,6 @@ MonoBehaviour:
     launchSpeedVariance: 1.5
     edgePadding: 0.08
     quadrantDepth: 0.65
-    minShotInterval: 5
-    maxShotInterval: 8
     shotsPerSession: 10
     crowdVolume: 0.6
   - difficulty: 2
@@ -2145,8 +2153,6 @@ MonoBehaviour:
     launchSpeedVariance: 2
     edgePadding: 0.02
     quadrantDepth: 0.8
-    minShotInterval: 4
-    maxShotInterval: 6
     shotsPerSession: 12
     crowdVolume: 1
   selected: 1
@@ -2830,7 +2836,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.078431375, g: 0.078431375, b: 0.078431375, a: 0.078431375}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
