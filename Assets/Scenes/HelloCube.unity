@@ -1031,6 +1031,8 @@ MonoBehaviour:
   releaseNormalizedTime: 0.6
   releaseTimeout: 3
   resetBlendTime: 0.15
+  stick: {fileID: 588939134}
+  hideStickDelay: 0.75
   logRelease: 0
 --- !u!1 &279163128
 GameObject:
