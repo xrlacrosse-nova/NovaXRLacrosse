@@ -1325,7 +1325,7 @@ MonoBehaviour:
   visualRoot: {fileID: 108915630}
   ringFill: {fileID: 329017396}
   gazeCenter: {fileID: 0}
-  targetRadius: 1
+  targetRadius: 0.8
   showTrack: 1
   trackColor: {r: 1, g: 1, b: 1, a: 0.25}
   dwellSeconds: 3
@@ -1769,6 +1769,9 @@ MonoBehaviour:
   rollReference: {fileID: 229782167}
   rollReferenceAxis: {x: 0, y: 0, z: 1}
   rollOffset: 0
+  alignLeftHand: 0
+  leftHandGripRotation: {x: 0, y: 0, z: 0}
+  leftHandAlignWeight: 1
 --- !u!1 &700000001
 GameObject:
   m_ObjectHideFlags: 0
