@@ -55,6 +55,17 @@ public class ShooterAnimationController : MonoBehaviour
     [Min(0f)]
     public float resetBlendTime = 0.15f;
 
+    [Header("Stick Hiding")]
+    [Tooltip("The shooter's stick. Its renderers are hidden from shortly after release until " +
+             "the avatar is back in Idle, so the follow-through can't clip it through the torso. " +
+             "Leave empty to never hide it. Only renderers are turned off, so the grip and " +
+             "BallReleasePoint keep working.")]
+    public GameObject stick;
+
+    [Tooltip("Seconds after release before the stick is hidden.")]
+    [Min(0f)]
+    public float hideStickDelay = 0.1f;
+
     [Header("Debug")]
     [Tooltip("Log each shot start and release, including the clip time it released at.")]
     public bool logRelease = false;
@@ -76,6 +87,10 @@ public class ShooterAnimationController : MonoBehaviour
     private float _lastNormalizedTime;
     private float _stalled;
 
+    private Renderer[] _stickRenderers;
+    private float _hideStickTimer = -1f;   // counting down to hide; < 0 = not pending
+    private bool _stickHidden = false;
+
     /// <summary>True if there's an Animator with a controller that has the Shoot state.
     /// RandomLauncher falls back to instant launches when this is false.</summary>
     public bool IsAvailable =>
@@ -95,6 +110,9 @@ public class ShooterAnimationController : MonoBehaviour
         _shootHash = Animator.StringToHash(shootStateName);
         _idleHash = Animator.StringToHash(idleStateName);
 
+        if (stick != null)
+            _stickRenderers = stick.GetComponentsInChildren<Renderer>(true);
+
         if (!IsAvailable)
             Debug.LogWarning($"[ShooterAnimationController] No Animator with a '{shootStateName}' state " +
                              "found — shots will launch instantly with no animation.", this);
@@ -112,6 +130,8 @@ public class ShooterAnimationController : MonoBehaviour
             launcher.OnSessionEnded -= ResetToIdle;
 
         _watching = false;
+        _hideStickTimer = -1f;
+        SetStickVisible(true);
     }
 
     /// <summary>LateUpdate, not Update: the Animator has evaluated this frame and the stick grip
@@ -120,6 +140,8 @@ public class ShooterAnimationController : MonoBehaviour
     /// ball well off the stick head.</summary>
     void LateUpdate()
     {
+        UpdateStickVisibility();
+
         if (!_watching) return;
 
         // Skip the frame PlayShot() was called: if it was called after the Animator's update,
@@ -180,6 +202,10 @@ public class ShooterAnimationController : MonoBehaviour
 
         animator.Play(_shootHash, 0, 0f);
 
+        // A new windup always starts with the stick in hand.
+        _hideStickTimer = -1f;
+        SetStickVisible(true);
+
         _watching = true;
         _playFrame = Time.frameCount;
         _elapsed = 0f;
@@ -216,7 +242,40 @@ public class ShooterAnimationController : MonoBehaviour
                              $"{normalizedTime:0.000} (target {releaseNormalizedTime:0.000}) — a frame hitch " +
                              "carried the clip past the release point.", this);
 
+        if (_stickRenderers != null)
+            _hideStickTimer = hideStickDelay;
+
         OnRelease?.Invoke();
+    }
+
+    /// <summary>Counts down to hiding the stick after a release, then shows it again once the
+    /// avatar has settled back in Idle (or, without an Idle state, once Shoot has finished).</summary>
+    private void UpdateStickVisibility()
+    {
+        if (_hideStickTimer >= 0f)
+        {
+            _hideStickTimer -= Time.deltaTime;
+            if (_hideStickTimer < 0f)
+                SetStickVisible(false);
+            return;
+        }
+
+        if (!_stickHidden || animator == null || animator.IsInTransition(0)) return;
+
+        AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
+        bool settled = state.shortNameHash == _idleHash ||
+                       (state.shortNameHash == _shootHash && state.normalizedTime >= 1f);
+        if (settled)
+            SetStickVisible(true);
+    }
+
+    private void SetStickVisible(bool visible)
+    {
+        if (_stickRenderers == null) return;
+
+        foreach (Renderer r in _stickRenderers)
+            if (r != null) r.enabled = visible;
+        _stickHidden = !visible;
     }
 
     [ContextMenu("Test Shot")]
