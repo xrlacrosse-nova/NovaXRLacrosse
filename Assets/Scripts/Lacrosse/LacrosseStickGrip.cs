@@ -11,11 +11,9 @@ using UnityEngine;
 ///   - the roll around the shaft comes from a reference axis (the top hand, so the pocket
 ///     turns with the wrist).
 ///
-/// Optional left hand fix (Turn Left Hand Onto Shaft): after the stick is posed, the left hand
-/// bone is turned, each frame, just enough that its palm faces the shaft and its fingers run
-/// across it. The clip's own pose is kept and only corrected, so it holds through the whole shot
-/// instead of matching one frame. That is the only bone this script touches. Use the right hand
-/// as Roll Reference with this on, so the hand fix and the stick's roll don't feed each other.
+/// Optional left hand fix: after the stick is posed, the left hand bone's rotation can be
+/// overridden with a fixed rotation relative to the stick (Align Left Hand), so the top hand
+/// stays turned onto the shaft through the whole shot. That is the only bone this script touches.
 ///
 /// The stick is NOT reparented. Its pose is written in world space, so the OBJ's pivot and any
 /// scale on the stick or the avatar's bones don't matter.
@@ -82,25 +80,18 @@ public class LacrosseStickGrip : MonoBehaviour
     public float rollOffset = 0f;
 
     [Header("Left Hand Fix (optional)")]
-    [Tooltip("Each frame, turns the left hand at the wrist so the palm faces the shaft and the " +
-             "fingers run across it. Fingers and arm still come from the clip.")]
-    public bool turnLeftHandOntoShaft = false;
+    [Tooltip("Overrides the left hand bone's rotation every frame with Left Hand Grip Rotation " +
+             "(relative to the stick). Only turns the hand at the wrist; fingers and arm still " +
+             "come from the clip.")]
+    public bool alignLeftHand = false;
 
-    [Tooltip("Left hand bone's local axis pointing out of the palm. Check the blue gizmo ray: " +
-             "it should point out of the palm, not the back of the hand.")]
-    public Vector3 leftPalmNormalLocal = Vector3.forward;
+    [Tooltip("Left hand rotation relative to the stick (Euler degrees). Set by the context menu " +
+             "commands; drag X/Y/Z in Play mode to turn the hand live.")]
+    public Vector3 leftHandGripRotation = Vector3.zero;
 
-    [Tooltip("Left hand bone's local axis pointing toward the fingertips (Mixamo: +Y). Check " +
-             "the white gizmo ray.")]
-    public Vector3 leftFingerAxisLocal = Vector3.up;
-
-    [Tooltip("Extra turn of the hand around the palm direction, in degrees, after the fix.")]
-    [Range(-180f, 180f)]
-    public float leftHandTwist = 0f;
-
-    [Tooltip("1 = full fix, 0 = the animation's rotation.")]
+    [Tooltip("1 = hand fully follows the grip rotation, 0 = the animation's rotation.")]
     [Range(0f, 1f)]
-    public float leftHandWeight = 1f;
+    public float leftHandAlignWeight = 1f;
 
     // Last good pocket direction, used when the roll reference lines up with the shaft.
     private Vector3 _lastPocketDir = Vector3.up;
@@ -150,39 +141,10 @@ public class LacrosseStickGrip : MonoBehaviour
 
         // After the stick is posed from the animated hands, so the override doesn't feed back
         // into the shaft or roll. The Animator rewrites the bone every frame, so nothing piles up.
-        if (turnLeftHandOntoShaft)
-            TurnLeftHandOntoShaft(bottomPalm, shaftDir);
-    }
-
-    // Smallest turn that points the palm at the shaft, then spins the hand around the palm
-    // direction so the fingers cross the shaft. Starts from this frame's animated rotation, so
-    // whatever the clip does, only the misalignment is removed.
-    private void TurnLeftHandOntoShaft(Vector3 shaftPoint, Vector3 shaftDir)
-    {
-        Quaternion animated = leftHandBone.rotation;
-
-        // Palm should face from the wrist toward the shaft, square to it.
-        Vector3 wrist = leftHandBone.position;
-        Vector3 toShaft = shaftPoint + Vector3.Project(wrist - shaftPoint, shaftDir) - wrist;
-        if (toShaft.sqrMagnitude < 0.000001f)
-            return;
-        toShaft.Normalize();
-
-        Vector3 palm = animated * leftPalmNormalLocal.normalized;
-        Quaternion swing = Quaternion.FromToRotation(palm, toShaft);
-
-        // Fingers: square to both the shaft and the palm direction, on whichever side they
-        // already point, so the hand never flips over.
-        Vector3 fingers = Vector3.ProjectOnPlane(swing * animated * leftFingerAxisLocal, toShaft);
-        Vector3 across = Vector3.Cross(shaftDir, toShaft);
-        if (Vector3.Dot(across, fingers) < 0f)
-            across = -across;
-        Quaternion spin = fingers.sqrMagnitude > 0.000001f
-            ? Quaternion.FromToRotation(fingers, across)
-            : Quaternion.identity;
-
-        Quaternion fixedRot = Quaternion.AngleAxis(leftHandTwist, toShaft) * spin * swing * animated;
-        leftHandBone.rotation = Quaternion.Slerp(animated, fixedRot, leftHandWeight);
+        if (alignLeftHand)
+            leftHandBone.rotation = Quaternion.Slerp(leftHandBone.rotation,
+                                                     transform.rotation * Quaternion.Euler(leftHandGripRotation),
+                                                     leftHandAlignWeight);
     }
 
     // ── Tuning ────────────────────────────────────────────────────
@@ -226,6 +188,31 @@ public class LacrosseStickGrip : MonoBehaviour
         Debug.Log($"[LacrosseStickGrip] Captured: Right Palm Offset {rightPalmOffset:F3}, " +
                   $"Left Palm Offset {leftPalmOffset:F3}, Roll Reference Axis {rollReferenceAxis:F3}. " +
                   "Copy Component now, then Paste Component Values after leaving Play mode.", this);
+    }
+
+    /// <summary>
+    /// Turns on Align Left Hand starting from the hand's current (animated) rotation, so nothing
+    /// jumps. Then drag Left Hand Grip Rotation's X/Y/Z in the Inspector to turn the hand live
+    /// (works while Play mode runs, since this script runs after the Animator).
+    /// </summary>
+    [ContextMenu("Start Left Hand Fix From Current Pose")]
+    void StartLeftHandFixFromCurrentPose()
+    {
+        if (leftHandBone == null)
+        {
+            Debug.LogWarning("[LacrosseStickGrip] Assign Left Hand Bone first.", this);
+            return;
+        }
+
+        // With the fix already on, the bone holds last frame's override; read it as-is so the
+        // captured value is what's on screen.
+        leftHandGripRotation = (Quaternion.Inverse(transform.rotation) * leftHandBone.rotation).eulerAngles;
+        leftHandAlignWeight = 1f;
+        alignLeftHand = true;
+
+        Debug.Log($"[LacrosseStickGrip] Left hand fix on, starting at {leftHandGripRotation:F1}. " +
+                  "Drag Left Hand Grip Rotation X/Y/Z to turn the hand. Copy Component before " +
+                  "leaving Play mode.", this);
     }
 
     // ── Private helpers ───────────────────────────────────────────
@@ -276,16 +263,7 @@ public class LacrosseStickGrip : MonoBehaviour
         if (rightHandBone != null)
             Gizmos.DrawWireSphere(PalmPosition(rightHandBone, rightPalmOffset), 0.02f);
         if (leftHandBone != null)
-        {
             Gizmos.DrawWireSphere(PalmPosition(leftHandBone, leftPalmOffset), 0.02f);
-
-            // Left hand axes used by Turn Left Hand Onto Shaft: blue = out of the palm,
-            // white = toward the fingertips.
-            Gizmos.color = Color.blue;
-            Gizmos.DrawRay(leftHandBone.position, leftHandBone.rotation * leftPalmNormalLocal.normalized * 0.1f);
-            Gizmos.color = Color.white;
-            Gizmos.DrawRay(leftHandBone.position, leftHandBone.rotation * leftFingerAxisLocal.normalized * 0.1f);
-        }
     }
 #endif
 }
