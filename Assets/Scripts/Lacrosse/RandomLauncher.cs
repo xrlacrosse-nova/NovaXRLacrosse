@@ -134,6 +134,7 @@ public class RandomLauncher : MonoBehaviour
     private GoalDetector _goalDetector;
     private FloorBoundary _floorBoundary;
     private BallFlight _ballFlight;   // optional: air drag + drag-aware aim
+    private LacrosseStickGrip _stickGrip;   // optional: the stick LaunchOrigin rides on, for the exit log
 
     // falling state (custom gravity after the plane; only when useUnityGravity is off)
     private bool _falling = false;
@@ -236,6 +237,10 @@ public class RandomLauncher : MonoBehaviour
         {
             Debug.LogWarning("[RandomLauncher] LaunchOrigin is not set. Using the ball's current position as origin. " +
                              "Assign a Transform in the Inspector for more realistic shots.");
+        }
+        else
+        {
+            _stickGrip = launchOrigin.GetComponentInParent<LacrosseStickGrip>();
         }
 
         // The ball only appears once it's shot — LaunchToward() shows it again.
@@ -536,9 +541,12 @@ public class RandomLauncher : MonoBehaviour
         if (spin != Vector3.zero)
             speedText += $" | spin {spin.magnitude / (2f * Mathf.PI):F0} rev/s";
 
+        // Which side of the stick head the ball leaves through (the pocket should face the goal).
+        string exitText = _stickGrip != null ? $" | exits {_stickGrip.DescribeExit(launchVelocity)}" : "";
+
         Debug.Log($"[RandomLauncher] Shot fired → {quadrant} ({aimMode}) | " +
                   $"target ({target.x:F2}, {target.y:F2}, {target.z:F2}) | " +
-                  $"speed {speedText} | {angle:+0.0;-0.0}° | {flightTime:F2} s");
+                  $"speed {speedText} | {angle:+0.0;-0.0}° | {flightTime:F2} s{exitText}");
     }
 
     // ── Private helpers ───────────────────────────────────────────
