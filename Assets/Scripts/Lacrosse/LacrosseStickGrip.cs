@@ -306,6 +306,36 @@ public class LacrosseStickGrip : MonoBehaviour
         return new Vector3(Mathf.DeltaAngle(0f, e.x), Mathf.DeltaAngle(0f, e.y), Mathf.DeltaAngle(0f, e.z));
     }
 
+    /// <summary>
+    /// Which side of the head a ball launched with this velocity leaves through, for the launch
+    /// log: the open face (pocket side, what a real release looks like), off the scoop, through a
+    /// sidewall, or back through the net. The launch itself doesn't use this; the ball is always
+    /// aimed at its target. A sidewall or net exit means the pocket isn't facing the goal at
+    /// release: tune Roll Reference Axis / Roll Offset, or the shooter's Release Normalized Time.
+    /// </summary>
+    public string DescribeExit(Vector3 worldVelocity)
+    {
+        Vector3 v = transform.InverseTransformDirection(worldVelocity).normalized;
+        Vector3 shaft = shaftAxisLocal.normalized;
+        Vector3 pocket = LocalFrame() * Vector3.up;
+        Vector3 side = Vector3.Cross(shaft, pocket);
+
+        float alongShaft = Vector3.Dot(v, shaft);
+        float outOfPocket = Vector3.Dot(v, pocket);
+        float sideways = Vector3.Dot(v, side);
+
+        string exit;
+        if (Mathf.Abs(sideways) >= Mathf.Abs(outOfPocket) && Mathf.Abs(sideways) >= Mathf.Abs(alongShaft))
+            exit = "SIDEWALL";
+        else if (Mathf.Abs(alongShaft) > Mathf.Abs(outOfPocket))
+            exit = alongShaft > 0f ? "scoop" : "BACK DOWN THE SHAFT";
+        else
+            exit = outOfPocket > 0f ? "open face" : "BACK OF THE NET";
+
+        float faceAngle = Mathf.Acos(Mathf.Clamp(outOfPocket, -1f, 1f)) * Mathf.Rad2Deg;
+        return $"{exit} ({faceAngle:F0}° off the pocket's facing)";
+    }
+
     // ── Private helpers ───────────────────────────────────────────
 
     private Vector3 RollReferenceDirection()
