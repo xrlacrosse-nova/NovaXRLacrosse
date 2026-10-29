@@ -7,7 +7,7 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// Voice commands between sessions, so the controller can stay in the stick mount
-/// (Plans/Current/Spoken_Summary_And_Voice_Commands_Plan.md, "Voice commands"). Uses Magic Leap's
+/// (Plans/Past/Spoken_Summary_And_Voice_Commands_Plan.md, "Voice commands"). Uses Magic Leap's
 /// voice intents (MLVoice) with the phrases in voiceConfiguration.
 ///   - Listens only while no session is running (the settings page is up): started at app
 ///     start and on OnSessionEnded, stopped on OnSessionStarted, restarted on app resume.

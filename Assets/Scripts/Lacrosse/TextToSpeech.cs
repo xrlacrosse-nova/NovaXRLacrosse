@@ -4,7 +4,7 @@ using UnityEngine;
 /// Spoken output for the headset, using Android's built-in text-to-speech engine
 /// (android.speech.tts.TextToSpeech) through JNI. Free and offline; nothing leaves the headset.
 /// Used by the post-session summary and the voice command replies
-/// (Plans/Current/Spoken_Summary_And_Voice_Commands_Plan.md).
+/// (Plans/Past/Spoken_Summary_And_Voice_Commands_Plan.md).
 ///
 ///   - Speak(text) cuts off anything already being said and says text. Called before the
 ///     engine has started, the latest text is kept and spoken once it's ready.

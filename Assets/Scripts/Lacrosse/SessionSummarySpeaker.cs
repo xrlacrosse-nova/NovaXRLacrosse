@@ -4,7 +4,7 @@ using System.Text;
 using UnityEngine;
 
 /// <summary>
-/// Speaks a short recap after each saved session (Plans/Current/Spoken_Summary_And_Voice_Commands_Plan.md,
+/// Speaks a short recap after each saved session (Plans/Past/Spoken_Summary_And_Voice_Commands_Plan.md,
 /// "Post-session summary"). Spoken only; nothing is shown on the board.
 ///   - Listens to SessionLogger.OnSessionSaved, not OnSessionEnded, so the player's index
 ///     already lists this session. No PlayerProfileStore = nothing saved = no summary.
