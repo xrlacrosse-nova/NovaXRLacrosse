@@ -8,13 +8,15 @@ using UnityEngine;
 /// RandomLauncher and GoalDetector.
 ///   - Session start: a new SessionRecord for PlayerProfileStore.CurrentPlayer, with the
 ///     launcher settings copied.
-///   - Each shot: aim and speed at launch (RandomLauncher.LastAim*), the gate-plane point and
+///   - Each shot: aim, speed and the shooter's hand at launch (RandomLauncher.LastAim*,
+///     ShooterAnimationController.CurrentShotRightHanded), the gate-plane point and
 ///     outcome when it ends (goal: OnPlaneCrossed, save: OnSaved).
 ///   - Shots the heatmap doesn't record aren't saved either: one that despawns before crossing
 ///     the gate plane or being saved (e.g. off the goalie's body), or one that crosses outside
 ///     the gate. So the saved session matches what was shown.
 ///   - Session end: flight paths are read from ShotPathRecorder.Paths once, here, paired with the
-///     shots in order and stored gate-relative. Then the session file and index.json are written.
+///     shots in order and stored gate-relative. Then the session file and index.json are written
+///     and OnSessionSaved fires (SessionSummarySpeaker listens).
 /// A session that never ends (app closed, Play stopped mid-session) isn't saved. File IO only
 /// happens at session end, never mid-shot.
 ///
@@ -30,6 +32,10 @@ public class SessionLogger : MonoBehaviour
     [Tooltip("Optional. Leave empty to find the DifficultySelector in the scene; its level is " +
              "saved with each session.")]
     public DifficultySelector difficulty;
+
+    /// <summary>Fired right after a finished session's file and index.json are written, so
+    /// SessionHistory already lists it. Not fired when nothing was saved.</summary>
+    public event Action<SessionRecord> OnSessionSaved;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -134,7 +140,10 @@ public class SessionLogger : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[SessionLogger] Couldn't save the session ({e.Message}).");
+            return;
         }
+
+        OnSessionSaved?.Invoke(session);
     }
 
     private SessionSettings SnapshotSettings()
@@ -166,7 +175,16 @@ public class SessionLogger : MonoBehaviour
             aimNormalized = _launcher.LastAimNormalized,
             launchSpeed = _launcher.LastLaunchSpeed,
             launchTime = Time.time - _sessionStartTime,
+            shooterHand = ShooterHand(),
         };
+    }
+
+    /// <summary>The launched shot's hand, or "" for an instant launch with no shooter avatar.</summary>
+    private string ShooterHand()
+    {
+        ShooterAnimationController shooter = _launcher.shooterAnimation;
+        if (shooter == null || !shooter.IsAvailable) return "";
+        return shooter.CurrentShotRightHanded ? ShotRecord.RightHand : ShotRecord.LeftHand;
     }
 
     private void HandlePlaneCrossed(Vector3 crossingPos)

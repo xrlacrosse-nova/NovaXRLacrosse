@@ -200,6 +200,94 @@ Transform:
     type: 3}
   m_PrefabInstance: {fileID: 229782160}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &57252930
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 57252931}
+  - component: {fileID: 57252932}
+  - component: {fileID: 57252933}
+  - component: {fileID: 57252934}
+  m_Layer: 0
+  m_Name: Voice
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &57252931
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 57252930}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1655719300}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &57252932
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 57252930}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40a8d987600cb88449b6c4e03be45cc5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TextToSpeech
+  speechRate: 1
+  speakTestOnStart: 0
+  testPhrase: Speech is working. You saved 8 of 12.
+  initTimeout: 5
+  editorCharsPerSecond: 15
+--- !u!114 &57252933
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 57252930}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ac04f647e195c041a8b4796bdfb32c2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SessionSummarySpeaker
+  speakDelay: 1
+  trendPoints: 10
+  sessionLogger: {fileID: 0}
+  history: {fileID: 0}
+  players: {fileID: 0}
+  launcher: {fileID: 0}
+--- !u!114 &57252934
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 57252930}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 50a77b70442d0c64ca7bb9e11b2a63e4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoiceCommands
+  voiceConfiguration: {fileID: 11400000, guid: 8760765f03c212e4296ccd5e3aebcdcc, type: 2}
+  ignoreAfterSpeechSeconds: 0.5
+  launcher: {fileID: 0}
+  difficulty: {fileID: 0}
+  history: {fileID: 0}
+  players: {fileID: 0}
+  summarySpeaker: {fileID: 0}
 --- !u!1 &63618236
 GameObject:
   m_ObjectHideFlags: 0
@@ -1028,11 +1116,20 @@ MonoBehaviour:
   launcher: {fileID: 866954162}
   shootStateName: Shoot
   idleStateName: Idle
+  rightIdleStateName: IdleRight
+  mirrorParameterName: Mirror
+  handedness: 2
+  rightHandedChance: 0.5
+  idleBlendTime: 0.3
   releaseNormalizedTime: 0.6
   releaseTimeout: 3
   resetBlendTime: 0.15
   stick: {fileID: 588939134}
+  stickGrip: {fileID: 0}
   hideStickDelay: 0.5
+  bodyRoot: {fileID: 0}
+  rightHandedYawOffset: 120
+  mirrorRightGripOnStart: 1
   logRelease: 0
 --- !u!1 &279163128
 GameObject:
@@ -1758,6 +1855,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 73ad100cd48a2094ebf5fed16d214a81, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LacrosseStickGrip
+  rightHanded: 0
   rightHandBone: {fileID: 17038138}
   leftHandBone: {fileID: 1835460686}
   rightPalmOffset: {x: 0, y: 0.08, z: 0}
@@ -1773,6 +1871,18 @@ MonoBehaviour:
   leftHandRotationSpace: 0
   leftHandGripRotation: {x: 222, y: 61, z: 170}
   leftHandAlignWeight: 1
+  rightGrip:
+    bottomHandBone: {fileID: 1835460686}
+    topHandBone: {fileID: 17038138}
+    bottomPalmOffset: {x: 0, y: 0.08, z: 0}
+    topPalmOffset: {x: 0, y: 0.08, z: 0}
+    rollReference: {fileID: 17038138}
+    rollReferenceAxis: {x: 0, y: 0, z: 1}
+    rollOffset: 0
+    alignTopHand: 0
+    topHandRotationSpace: 0
+    topHandGripRotation: {x: 0, y: 0, z: 0}
+    topHandAlignWeight: 1
 --- !u!1 &700000001
 GameObject:
   m_ObjectHideFlags: 0
@@ -3495,6 +3605,7 @@ Transform:
   - {fileID: 825625400}
   - {fileID: 392214989}
   - {fileID: 188054071}
+  - {fileID: 57252931}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1679040415
@@ -3528,7 +3639,7 @@ Transform:
   m_GameObject: {fileID: 1679040415}
   serializedVersion: 2
   m_LocalRotation: {x: -0.42261827, y: 0, z: 0, w: 0.9063079}
-  m_LocalPosition: {x: 0, y: 0.2, z: 0}
+  m_LocalPosition: {x: 0, y: 0.187, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

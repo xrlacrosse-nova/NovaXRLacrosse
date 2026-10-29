@@ -36,6 +36,8 @@ public class ShotRecord
 {
     public const string Save = "Save";
     public const string Goal = "Goal";
+    public const string LeftHand = "Left";
+    public const string RightHand = "Right";
 
     public int index;
     public Quadrant aimedQuadrant;       // quadrant the launcher aimed at
@@ -43,6 +45,7 @@ public class ShotRecord
     public Vector2 aimNormalized;        // where the launcher aimed, [-1, 1]
     public Vector2 resultNormalized;     // gate-plane crossing / projected save point, [-1, 1]
     public string outcome;               // Save | Goal
+    public string shooterHand;           // Left | Right; "" = no shooter avatar, or a file from before it was saved
     public float launchSpeed;            // release speed, m/s
     public float launchTime;             // seconds since session start
     public Vector3[] path;               // gate-relative, launch → gate plane (or the stick for a save)
