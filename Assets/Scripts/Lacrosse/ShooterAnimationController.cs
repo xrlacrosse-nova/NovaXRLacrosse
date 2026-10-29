@@ -20,10 +20,13 @@ using UnityEngine;
 /// Idle is optional: without it the avatar just holds the clip's last frame between shots.
 /// Without Mirror every shot is left-handed; without IdleRight the hand snaps at the windup.
 ///
-/// Handedness (Plans/Future/Reviewed/Mirrored_Shot_Plan.md): each shot's hand is rolled between
+/// Handedness (Plans/Current/Mirrored_Shot_Plan.md): each shot's hand is rolled between
 /// shots (at session start and right after each release), and the stance blends to that hand's
 /// idle during the shot interval with the stick hidden, so the goalie can read the hands before
 /// the windup. The stick's LacrosseStickGrip is switched to the matching grip set.
+/// Mirroring also mirrors the body's facing, so the right-handed stance turns the avatar by
+/// Right Handed Yaw Offset (during the same blend). Mirror Stick Grip To Right Hand derives
+/// the right-handed grip from the tuned left-handed one, so the stick needn't be posed by hand.
 ///
 /// Setup: attach to the shooter avatar (the GameObject with the Animator), then drag the
 /// avatar into RandomLauncher's Shooter Animation field. Use the "Test Shot" context menu in
@@ -96,6 +99,16 @@ public class ShooterAnimationController : MonoBehaviour
     [Tooltip("The stick's grip, switched to the shot's hand. Found on Stick if left empty.")]
     public LacrosseStickGrip stickGrip;
 
+    [Header("Right-Handed Facing")]
+    [Tooltip("Transform turned for the right-handed stance. Leave empty for this GameObject.")]
+    public Transform bodyRoot;
+
+    [Tooltip("Degrees around Y added to the avatar's scene rotation for the right-handed stance " +
+             "(mirroring flips the clip's facing). E.g. scene Y 120, right-handed should face 240 " +
+             "-> 120. Drag it live in Play mode while in the right-handed stance.")]
+    [Range(-180f, 180f)]
+    public float rightHandedYawOffset = 0f;
+
     [Tooltip("Seconds after release before the stick is hidden.")]
     [Min(0f)]
     public float hideStickDelay = 0.1f;
@@ -124,6 +137,12 @@ public class ShooterAnimationController : MonoBehaviour
     private bool _nextRightHanded;    // hand of the next shot, rolled between shots
     private bool _stanceRightHanded;  // hand the avatar is posed in (or blending to)
     private bool _returnPending;      // released; blend to the next shot's idle once Shoot ends
+
+    private Quaternion _leftBodyRotation;   // bodyRoot's scene rotation = the left-handed facing
+    private Quaternion _turnFrom, _turnTo;
+    private float _turnElapsed, _turnDuration;
+    private bool _turning;
+    private bool _initialized;
 
     private bool _watching = false;
     private int _playFrame;
@@ -159,6 +178,11 @@ public class ShooterAnimationController : MonoBehaviour
         _idleHash = Animator.StringToHash(idleStateName);
         _rightIdleHash = Animator.StringToHash(rightIdleStateName);
         _mirrorHash = Animator.StringToHash(mirrorParameterName);
+
+        if (bodyRoot == null)
+            bodyRoot = transform;
+        _leftBodyRotation = bodyRoot.localRotation;
+        _initialized = true;
 
         if (stick != null)
         {
@@ -211,6 +235,26 @@ public class ShooterAnimationController : MonoBehaviour
         _returnPending = false;
         _hideStickTimer = -1f;
         SetStickVisible(true);
+    }
+
+    // Update, before the Animator and the stick grip, so the stick is solved from this frame's
+    // facing.
+    void Update()
+    {
+        if (!_turning) return;
+
+        _turnElapsed += Time.deltaTime;
+        float t = Mathf.Clamp01(_turnElapsed / _turnDuration);
+        bodyRoot.localRotation = Quaternion.Slerp(_turnFrom, _turnTo, Mathf.SmoothStep(0f, 1f, t));
+        if (t >= 1f)
+            _turning = false;
+    }
+
+    // Right Handed Yaw Offset edits in Play mode show right away, even while paused.
+    void OnValidate()
+    {
+        if (Application.isPlaying && _initialized && !_turning && bodyRoot != null)
+            bodyRoot.localRotation = BodyRotationFor(_stanceRightHanded);
     }
 
     /// <summary>LateUpdate, not Update: the Animator has evaluated this frame and the stick grip
@@ -296,6 +340,7 @@ public class ShooterAnimationController : MonoBehaviour
         if (_canMirror)
             animator.SetBool(_mirrorHash, rightHanded);
         SetGrip(rightHanded);
+        TurnBody(rightHanded, 0f);
 
         animator.Play(_shootHash, 0, 0f);
 
@@ -392,6 +437,7 @@ public class ShooterAnimationController : MonoBehaviour
         }
         _stanceRightHanded = stance;
         SetGrip(stance);
+        TurnBody(stance, blendTime);
 
         animator.CrossFadeInFixedTime(stance ? _rightIdleHash : _idleHash, blendTime, 0);
     }
@@ -415,6 +461,23 @@ public class ShooterAnimationController : MonoBehaviour
     {
         if (stickGrip != null)
             stickGrip.rightHanded = rightHanded;
+    }
+
+    private Quaternion BodyRotationFor(bool rightHanded) =>
+        rightHanded ? Quaternion.Euler(0f, rightHandedYawOffset, 0f) * _leftBodyRotation : _leftBodyRotation;
+
+    /// <summary>Turns the avatar to the given hand's facing over the given time (0 = now).</summary>
+    private void TurnBody(bool rightHanded, float duration)
+    {
+        if (bodyRoot == null) return;
+
+        _turnFrom = bodyRoot.localRotation;
+        _turnTo = BodyRotationFor(rightHanded);
+        _turnElapsed = 0f;
+        _turnDuration = duration;
+        _turning = duration > 0f;
+        if (!_turning)
+            bodyRoot.localRotation = _turnTo;
     }
 
     private static string HandName(bool rightHanded) => rightHanded ? "right-handed" : "left-handed";
@@ -471,6 +534,53 @@ public class ShooterAnimationController : MonoBehaviour
 
     [ContextMenu("Test Shot (Right)")]
     void TestShotRight() => TestShotWithHand(true);
+
+    /// <summary>
+    /// Works out the right-handed grip from the tuned left-handed one: poses Idle, solves the
+    /// left-handed stick, mirrors it across the avatar's center plane, poses IdleRight and
+    /// captures that as Right Handed Grip (top hand fix included). Leaves the avatar in the
+    /// right-handed stance so the result shows, even while paused. Play mode only; Copy
+    /// Component on the stick before leaving Play mode.
+    /// </summary>
+    [ContextMenu("Mirror Stick Grip To Right Hand")]
+    void MirrorStickGripToRightHand()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[ShooterAnimationController] Mirror Stick Grip only works in Play mode.", this);
+            return;
+        }
+        if (!IsAvailable || !_hasIdle || !_hasRightIdle || stickGrip == null)
+        {
+            Debug.LogWarning($"[ShooterAnimationController] Mirror Stick Grip needs the '{idleStateName}' and " +
+                             $"'{rightIdleStateName}' states and a Stick Grip.", this);
+            return;
+        }
+
+        _watching = false;
+        _returnPending = false;
+        _hideStickTimer = -1f;
+        SetStickVisible(true);
+
+        // Both poses are sampled at the same facing, so the mirror plane is the same for both.
+        TurnBody(true, 0f);
+        bool ok = stickGrip.MirrorLeftGripOntoRight(animator.transform,
+            () => PoseNow(_idleHash), () => PoseNow(_rightIdleHash));
+
+        _stanceRightHanded = ok;
+        if (!ok)
+        {
+            TurnBody(false, 0f);
+            PoseNow(_idleHash);
+        }
+    }
+
+    // Poses the avatar in a state's first frame right now (works while paused).
+    private void PoseNow(int stateHash)
+    {
+        animator.Play(stateHash, 0, 0f);
+        animator.Update(0f);
+    }
 
     // Plays the chosen hand straight from the current stance, so it may snap at the windup.
     private void TestShotWithHand(bool rightHanded)

@@ -39,8 +39,9 @@ using UnityEngine;
 ///    this component -> Capture Grip From Current Pose. Copy Component, exit Play mode, Paste
 ///    Component Values, re-enable.
 /// 6. Right-handed shot: in Right Handed Grip, drag the LEFT hand bone into Bottom Hand Bone,
-///    the RIGHT hand bone into Top Hand Bone and Roll Reference. Then repeat step 5 paused on a
-///    right-handed shot (shooter -> Test Shot (Right)); Capture writes into the active set.
+///    the RIGHT hand bone into Top Hand Bone and Roll Reference. Then, in Play mode, shooter ->
+///    Mirror Stick Grip To Right Hand fills it in from the left-handed grip. To touch it up,
+///    repeat step 5 paused on a right-handed shot; Capture writes into the active set.
 /// </summary>
 public class LacrosseStickGrip : MonoBehaviour
 {
@@ -265,6 +266,13 @@ public class LacrosseStickGrip : MonoBehaviour
             _warnedNoRightGrip = true;
         }
 
+        Solve();
+    }
+
+    /// <summary>Poses the stick from the active set's hands as they are right now, then applies
+    /// the top hand fix.</summary>
+    private void Solve()
+    {
         Transform bottomBone = BottomBone;
         Transform topBone = TopBone;
 
@@ -305,22 +313,23 @@ public class LacrosseStickGrip : MonoBehaviour
     // Inspector edit while paused) gives the same result.
     private void ApplyTopHandFix()
     {
+        TopBone.rotation = Quaternion.Slerp(_animatedTopHandRotation, TopHandTarget(), TopAlignWeight);
+    }
+
+    // The top hand's full-weight fix rotation this frame, in world space.
+    private Quaternion TopHandTarget()
+    {
         Transform topBone = TopBone;
         Quaternion grip = Quaternion.Euler(TopGripRotation);
-        Quaternion target;
         switch (TopRotationSpace)
         {
             case HandRotationSpace.RelativeToForearm:
-                target = topBone.parent != null ? topBone.parent.rotation * grip : grip;
-                break;
+                return topBone.parent != null ? topBone.parent.rotation * grip : grip;
             case HandRotationSpace.OffsetFromAnimation:
-                target = _animatedTopHandRotation * grip;
-                break;
+                return _animatedTopHandRotation * grip;
             default:
-                target = transform.rotation * grip;
-                break;
+                return transform.rotation * grip;
         }
-        topBone.rotation = Quaternion.Slerp(_animatedTopHandRotation, target, TopAlignWeight);
     }
 
     // Inspector edits in Play mode: re-apply now so they show even while paused, and say so if
@@ -436,6 +445,104 @@ public class LacrosseStickGrip : MonoBehaviour
         Debug.Log($"[LacrosseStickGrip] {hand} fix on ({TopRotationSpace}), starting at " +
                   $"{TopGripRotation:F1}. Drag its grip rotation X/Y/Z to turn the hand. " +
                   "Copy Component before leaving Play mode.", this);
+    }
+
+    /// <summary>
+    /// Fills Right Handed Grip by mirroring the left-handed grip. poseLeft / poseRight put the
+    /// avatar in the same frame left- and right-handed (Idle / IdleRight). The left-handed stick
+    /// is solved, reflected across mirrorRoot's center plane (its local YZ plane, the plane
+    /// Humanoid mirroring reflects across), and captured against the right-handed pose, like
+    /// Capture Grip From Current Pose. The top hand fix is mirrored too. A starting point: the
+    /// retarget isn't perfectly symmetric, so touch up with Capture if needed. Ends right-handed.
+    /// </summary>
+    public bool MirrorLeftGripOntoRight(Transform mirrorRoot, System.Action poseLeft, System.Action poseRight)
+    {
+        if (rightHandBone == null || leftHandBone == null || !HasRightGrip)
+        {
+            Debug.LogWarning("[LacrosseStickGrip] Mirroring needs both left-handed hand bones and Right " +
+                             "Handed Grip's Bottom/Top Hand Bone.", this);
+            return false;
+        }
+
+        // Left-handed stick and left hand fix, as they are on screen in the left-handed pose.
+        rightHanded = false;
+        poseLeft();
+        Solve();
+        Vector3 grip = transform.TransformPoint(bottomGripPoint);
+        Vector3 shaftDir = transform.TransformDirection(shaftAxisLocal).normalized;
+        Vector3 pocketDir = transform.TransformDirection(pocketAxisLocal);
+        Quaternion leftAnimated = _animatedTopHandRotation;
+        Quaternion leftTarget = TopHandTarget();
+
+        // Reflected across the avatar's center plane.
+        Vector3 n = mirrorRoot.right;
+        Vector3 o = mirrorRoot.position;
+        grip -= 2f * Vector3.Dot(grip - o, n) * n;
+        shaftDir = MirrorDirection(shaftDir, n);
+        pocketDir = Vector3.ProjectOnPlane(MirrorDirection(pocketDir, n), shaftDir);
+        if (pocketDir.sqrMagnitude < 0.0001f)
+        {
+            rightHanded = false;
+            Debug.LogWarning("[LacrosseStickGrip] Couldn't mirror the pocket direction.", this);
+            return false;
+        }
+        pocketDir.Normalize();
+
+        // Captured against the right-handed pose (same math as Capture Grip From Current Pose).
+        rightHanded = true;
+        poseRight();
+        Transform bottom = rightGrip.bottomHandBone;
+        Transform top = rightGrip.topHandBone;
+        rightGrip.bottomPalmOffset = Quaternion.Inverse(bottom.rotation) * (grip - bottom.position);
+        Vector3 onShaft = grip + Vector3.Project(top.position - grip, shaftDir);
+        rightGrip.topPalmOffset = Quaternion.Inverse(top.rotation) * (onShaft - top.position);
+        rightGrip.rollReferenceAxis = rightGrip.rollReference != null
+            ? rightGrip.rollReference.InverseTransformDirection(pocketDir)
+            : pocketDir;
+        rightGrip.rollOffset = 0f;
+
+        // Top hand fix: mirror the left hand's world-space turn away from the clip and put it on
+        // the right hand, stored in the same rotation space as the left hand's.
+        rightGrip.alignTopHand = alignLeftHand;
+        rightGrip.topHandRotationSpace = leftHandRotationSpace;
+        rightGrip.topHandAlignWeight = leftHandAlignWeight;
+        if (alignLeftHand)
+        {
+            (leftTarget * Quaternion.Inverse(leftAnimated)).ToAngleAxis(out float angle, out Vector3 axis);
+            Quaternion rightAnimated = top.rotation;
+            Quaternion target = Quaternion.AngleAxis(-angle, MirrorDirection(axis, n)) * rightAnimated;
+
+            Quaternion stickRotation = Quaternion.LookRotation(shaftDir, pocketDir) * Quaternion.Inverse(LocalFrame());
+            Quaternion captured;
+            switch (leftHandRotationSpace)
+            {
+                case HandRotationSpace.RelativeToForearm:
+                    captured = top.parent != null ? Quaternion.Inverse(top.parent.rotation) * target : target;
+                    break;
+                case HandRotationSpace.OffsetFromAnimation:
+                    captured = Quaternion.Inverse(rightAnimated) * target;
+                    break;
+                default:
+                    captured = Quaternion.Inverse(stickRotation) * target;
+                    break;
+            }
+            rightGrip.topHandGripRotation = WrapEuler(captured.eulerAngles);
+        }
+
+        // Show the result now, even while paused.
+        Solve();
+
+        Debug.Log($"[LacrosseStickGrip] Mirrored the left-handed grip: Bottom Palm Offset " +
+                  $"{rightGrip.bottomPalmOffset:F3}, Top Palm Offset {rightGrip.topPalmOffset:F3}, Roll " +
+                  $"Reference Axis {rightGrip.rollReferenceAxis:F3}, Align Top Hand {rightGrip.alignTopHand}. " +
+                  "Copy Component now, then Paste Component Values after leaving Play mode.", this);
+        return true;
+    }
+
+    // A direction reflected across the plane with normal n.
+    private static Vector3 MirrorDirection(Vector3 v, Vector3 n)
+    {
+        return v - 2f * Vector3.Dot(v, n) * n;
     }
 
     // 0..360 → -180..180, so small turns read as small numbers in the Inspector.
