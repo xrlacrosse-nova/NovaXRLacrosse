@@ -1039,7 +1039,7 @@ MonoBehaviour:
   stick: {fileID: 588939134}
   stickGrip: {fileID: 0}
   bodyRoot: {fileID: 0}
-  rightHandedYawOffset: -120
+  rightHandedYawOffset: 120
   hideStickDelay: 0.5
   logRelease: 0
 --- !u!1 &279163128
