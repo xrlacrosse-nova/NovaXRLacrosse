@@ -1028,10 +1028,18 @@ MonoBehaviour:
   launcher: {fileID: 866954162}
   shootStateName: Shoot
   idleStateName: Idle
+  rightIdleStateName: IdleRight
+  mirrorParameterName: Mirror
+  handedness: 2
+  rightHandedChance: 0.5
+  idleBlendTime: 0.3
   releaseNormalizedTime: 0.6
   releaseTimeout: 3
   resetBlendTime: 0.15
   stick: {fileID: 588939134}
+  stickGrip: {fileID: 0}
+  bodyRoot: {fileID: 0}
+  rightHandedYawOffset: -120
   hideStickDelay: 0.5
   logRelease: 0
 --- !u!1 &279163128
@@ -1758,6 +1766,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 73ad100cd48a2094ebf5fed16d214a81, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LacrosseStickGrip
+  rightHanded: 0
   rightHandBone: {fileID: 17038138}
   leftHandBone: {fileID: 1835460686}
   rightPalmOffset: {x: 0, y: 0.08, z: 0}
@@ -1773,6 +1782,18 @@ MonoBehaviour:
   leftHandRotationSpace: 0
   leftHandGripRotation: {x: 222, y: 61, z: 170}
   leftHandAlignWeight: 1
+  rightGrip:
+    bottomHandBone: {fileID: 1835460686}
+    topHandBone: {fileID: 17038138}
+    bottomPalmOffset: {x: 0, y: 0.08, z: 0}
+    topPalmOffset: {x: 0, y: 0.08, z: 0}
+    rollReference: {fileID: 17038138}
+    rollReferenceAxis: {x: 0, y: 0, z: 1}
+    rollOffset: 0
+    alignTopHand: 0
+    topHandRotationSpace: 0
+    topHandGripRotation: {x: 0, y: 0, z: 0}
+    topHandAlignWeight: 1
 --- !u!1 &700000001
 GameObject:
   m_ObjectHideFlags: 0
