@@ -15,7 +15,8 @@ using UnityEngine;
 ///     the gate plane or being saved (e.g. off the goalie's body), or one that crosses outside
 ///     the gate. So the saved session matches what was shown.
 ///   - Session end: flight paths are read from ShotPathRecorder.Paths once, here, paired with the
-///     shots in order and stored gate-relative. Then the session file and index.json are written.
+///     shots in order and stored gate-relative. Then the session file and index.json are written
+///     and OnSessionSaved fires (SessionSummarySpeaker listens).
 /// A session that never ends (app closed, Play stopped mid-session) isn't saved. File IO only
 /// happens at session end, never mid-shot.
 ///
@@ -31,6 +32,10 @@ public class SessionLogger : MonoBehaviour
     [Tooltip("Optional. Leave empty to find the DifficultySelector in the scene; its level is " +
              "saved with each session.")]
     public DifficultySelector difficulty;
+
+    /// <summary>Fired right after a finished session's file and index.json are written, so
+    /// SessionHistory already lists it. Not fired when nothing was saved.</summary>
+    public event Action<SessionRecord> OnSessionSaved;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -135,7 +140,10 @@ public class SessionLogger : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[SessionLogger] Couldn't save the session ({e.Message}).");
+            return;
         }
+
+        OnSessionSaved?.Invoke(session);
     }
 
     private SessionSettings SnapshotSettings()
