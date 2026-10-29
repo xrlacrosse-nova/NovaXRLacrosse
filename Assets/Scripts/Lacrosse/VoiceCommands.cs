@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using MagicLeap.Android;
 using UnityEngine;
 using UnityEngine.XR.MagicLeap;
 #if UNITY_EDITOR
@@ -100,7 +99,8 @@ public class VoiceCommands : MonoBehaviour
             return;
         }
 
-        Permissions.RequestPermission(MLPermission.VoiceInput, OnPermissionGranted, OnPermissionDenied, OnPermissionDenied);
+        // Fully qualified: only this script imports both MagicLeap.Android and UnityEngine.XR.MagicLeap.
+        MagicLeap.Android.Permissions.RequestPermission(MLPermission.VoiceInput, OnPermissionGranted, OnPermissionDenied, OnPermissionDenied);
     }
 
     void OnEnable()
