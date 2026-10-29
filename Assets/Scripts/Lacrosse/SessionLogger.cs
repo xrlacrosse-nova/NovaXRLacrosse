@@ -8,7 +8,8 @@ using UnityEngine;
 /// RandomLauncher and GoalDetector.
 ///   - Session start: a new SessionRecord for PlayerProfileStore.CurrentPlayer, with the
 ///     launcher settings copied.
-///   - Each shot: aim and speed at launch (RandomLauncher.LastAim*), the gate-plane point and
+///   - Each shot: aim, speed and the shooter's hand at launch (RandomLauncher.LastAim*,
+///     ShooterAnimationController.CurrentShotRightHanded), the gate-plane point and
 ///     outcome when it ends (goal: OnPlaneCrossed, save: OnSaved).
 ///   - Shots the heatmap doesn't record aren't saved either: one that despawns before crossing
 ///     the gate plane or being saved (e.g. off the goalie's body), or one that crosses outside
@@ -166,7 +167,16 @@ public class SessionLogger : MonoBehaviour
             aimNormalized = _launcher.LastAimNormalized,
             launchSpeed = _launcher.LastLaunchSpeed,
             launchTime = Time.time - _sessionStartTime,
+            shooterHand = ShooterHand(),
         };
+    }
+
+    /// <summary>The launched shot's hand, or "" for an instant launch with no shooter avatar.</summary>
+    private string ShooterHand()
+    {
+        ShooterAnimationController shooter = _launcher.shooterAnimation;
+        if (shooter == null || !shooter.IsAvailable) return "";
+        return shooter.CurrentShotRightHanded ? ShotRecord.RightHand : ShotRecord.LeftHand;
     }
 
     private void HandlePlaneCrossed(Vector3 crossingPos)
