@@ -39,7 +39,8 @@ using UnityEngine;
 ///    this component -> Capture Grip From Current Pose. Copy Component, exit Play mode, Paste
 ///    Component Values, re-enable.
 /// 6. Right-handed shot: in Right Handed Grip, drag the LEFT hand bone into Bottom Hand Bone,
-///    the RIGHT hand bone into Top Hand Bone and Roll Reference. Then, in Play mode, shooter ->
+///    the RIGHT hand bone into Top Hand Bone, and the mirror of the left-handed Roll Reference
+///    (right hand there -> left hand here) into Roll Reference. Then, in Play mode, shooter ->
 ///    Mirror Stick Grip To Right Hand fills it in from the left-handed grip. To touch it up,
 ///    repeat step 5 paused on a right-handed shot; Capture writes into the active set.
 /// </summary>
@@ -90,9 +91,15 @@ public class LacrosseStickGrip : MonoBehaviour
              "faces. Capture Grip From Current Pose sets this.")]
     public Vector3 rollReferenceAxis = Vector3.forward;
 
-    [Tooltip("Extra spin around the shaft, in degrees, applied after the roll reference.")]
+    [Tooltip("Turns the stick head (the whole stick, around the shaft) by this many degrees, " +
+             "after the roll reference. Drag it in Play mode; it shows right away, even paused.")]
     [Range(-180f, 180f)]
     public float rollOffset = 0f;
+
+    [Tooltip("Turns the whole stick around its bottom grip point after the grip is solved, in degrees: " +
+             "X tilts the head toward/away from the pocket side, Y swings it sideways, Z spins it " +
+             "around the shaft. X/Y move the shaft off the top hand. Live in Play mode, even paused.")]
+    public Vector3 stickRotation = Vector3.zero;
 
     /// <summary>What the top hand's grip rotation is measured against.</summary>
     public enum HandRotationSpace
@@ -141,17 +148,24 @@ public class LacrosseStickGrip : MonoBehaviour
         [Tooltip("Offset from the top hand bone (the wrist joint) to the center of the palm.")]
         public Vector3 topPalmOffset = new Vector3(0f, 0.08f, 0f);
 
-        [Tooltip("The pocket faces along Roll Reference Axis of this Transform. Use the top " +
-                 "(right) hand bone, like the left-handed grip uses its top hand.")]
+        [Tooltip("The pocket faces along Roll Reference Axis of this Transform. Use the mirror " +
+                 "of the left-handed Roll Reference: if that's the right hand, use the left hand " +
+                 "here, and the other way round.")]
         public Transform rollReference;
 
         [Tooltip("Axis (in Roll Reference's local space) the pocket faces. Capture Grip From " +
                  "Current Pose sets this.")]
         public Vector3 rollReferenceAxis = Vector3.forward;
 
-        [Tooltip("Extra spin around the shaft, in degrees, applied after the roll reference.")]
+        [Tooltip("Turns the stick head (the whole stick, around the shaft) by this many degrees, " +
+                 "after the roll reference. Drag it in Play mode; it shows right away, even paused.")]
         [Range(-180f, 180f)]
         public float rollOffset = 0f;
+
+        [Tooltip("Turns the whole stick around its bottom grip point after the grip is solved, in degrees: " +
+                 "X tilts the head toward/away from the pocket side, Y swings it sideways, Z spins it " +
+                 "around the shaft. X/Y move the shaft off the top hand. Live in Play mode, even paused.")]
+        public Vector3 stickRotation = Vector3.zero;
 
         [Tooltip("Overrides the top (right) hand bone's rotation every frame with Top Hand Grip " +
                  "Rotation. Same as Align Left Hand, for the right-handed shot.")]
@@ -216,6 +230,12 @@ public class LacrosseStickGrip : MonoBehaviour
     {
         get => UseRight ? rightGrip.rollOffset : rollOffset;
         set { if (UseRight) rightGrip.rollOffset = value; else rollOffset = value; }
+    }
+
+    private Vector3 StickRotation
+    {
+        get => UseRight ? rightGrip.stickRotation : stickRotation;
+        set { if (UseRight) rightGrip.stickRotation = value; else stickRotation = value; }
     }
 
     private bool AlignTop
@@ -294,8 +314,11 @@ public class LacrosseStickGrip : MonoBehaviour
         _lastPocketDir = pocketDir;
 
         // Map the stick's local (shaft, pocket) frame onto the world (shaft, pocket) frame.
+        // Stick Rotation is in the (side, pocket, shaft) frame, so its X/Y/Z read the same for
+        // either hand.
         Quaternion worldFrame = Quaternion.LookRotation(shaftDir, pocketDir)
-                              * Quaternion.AngleAxis(RollOffset, Vector3.forward);
+                              * Quaternion.AngleAxis(RollOffset, Vector3.forward)
+                              * Quaternion.Euler(StickRotation);
         transform.rotation = worldFrame * Quaternion.Inverse(LocalFrame());
 
         // Slide the stick so its bottom grip point lands in the bottom palm.
@@ -332,8 +355,9 @@ public class LacrosseStickGrip : MonoBehaviour
         }
     }
 
-    // Inspector edits in Play mode: re-apply now so they show even while paused, and say so if
-    // the fix is off (the usual reason "changing the numbers does nothing").
+    // Inspector edits in Play mode: re-solve now so they show even while paused (Roll Offset,
+    // palm offsets, the hand fix), and say so if the fix is off (the usual reason "changing the
+    // numbers does nothing").
     void OnValidate()
     {
         // Only while the cached rotation belongs to the active set's top hand (not right after
@@ -341,14 +365,18 @@ public class LacrosseStickGrip : MonoBehaviour
         if (!Application.isPlaying || _animatedTopHand == null || _animatedTopHand != TopBone)
             return;
 
+        // Back to the clip's rotation first, so the solve reads the hands as the Animator left
+        // them, not last frame's fix.
+        _animatedTopHand.rotation = _animatedTopHandRotation;
+        if (BottomBone != null)
+            Solve();
+
         if (AlignTop)
         {
-            ApplyTopHandFix();
             _warnedFixOff = false;
         }
         else
         {
-            _animatedTopHand.rotation = _animatedTopHandRotation;
             if (!_warnedFixOff && (TopGripRotation != Vector3.zero || TopRotationSpace != HandRotationSpace.RelativeToStick))
             {
                 string fix = UseRight ? "Align Top Hand" : "Align Left Hand";
@@ -396,6 +424,7 @@ public class LacrosseStickGrip : MonoBehaviour
             Transform rollRef = RollRef;
             RollAxis = rollRef != null ? rollRef.InverseTransformDirection(pocketNow) : pocketNow;
             RollOffset = 0f;
+            StickRotation = Vector3.zero;   // the captured pose already includes any turn
         }
 
         string set = UseRight ? "right-handed" : "left-handed";
@@ -500,6 +529,7 @@ public class LacrosseStickGrip : MonoBehaviour
             ? rightGrip.rollReference.InverseTransformDirection(pocketDir)
             : pocketDir;
         rightGrip.rollOffset = 0f;
+        rightGrip.stickRotation = Vector3.zero;   // the mirrored pose already includes the lefty's
 
         // Top hand fix: mirror the left hand's world-space turn away from the clip and put it on
         // the right hand, stored in the same rotation space as the left hand's.
@@ -512,7 +542,7 @@ public class LacrosseStickGrip : MonoBehaviour
             Quaternion rightAnimated = top.rotation;
             Quaternion target = Quaternion.AngleAxis(-angle, MirrorDirection(axis, n)) * rightAnimated;
 
-            Quaternion stickRotation = Quaternion.LookRotation(shaftDir, pocketDir) * Quaternion.Inverse(LocalFrame());
+            Quaternion mirroredStick = Quaternion.LookRotation(shaftDir, pocketDir) * Quaternion.Inverse(LocalFrame());
             Quaternion captured;
             switch (leftHandRotationSpace)
             {
@@ -523,7 +553,7 @@ public class LacrosseStickGrip : MonoBehaviour
                     captured = Quaternion.Inverse(rightAnimated) * target;
                     break;
                 default:
-                    captured = Quaternion.Inverse(stickRotation) * target;
+                    captured = Quaternion.Inverse(mirroredStick) * target;
                     break;
             }
             rightGrip.topHandGripRotation = WrapEuler(captured.eulerAngles);

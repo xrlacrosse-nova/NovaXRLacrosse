@@ -99,6 +99,10 @@ public class ShooterAnimationController : MonoBehaviour
     [Tooltip("The stick's grip, switched to the shot's hand. Found on Stick if left empty.")]
     public LacrosseStickGrip stickGrip;
 
+    [Tooltip("Seconds after release before the stick is hidden.")]
+    [Min(0f)]
+    public float hideStickDelay = 0.1f;
+
     [Header("Right-Handed Facing")]
     [Tooltip("Transform turned for the right-handed stance. Leave empty for this GameObject.")]
     public Transform bodyRoot;
@@ -108,10 +112,6 @@ public class ShooterAnimationController : MonoBehaviour
              "-> 120. Drag it live in Play mode while in the right-handed stance.")]
     [Range(-180f, 180f)]
     public float rightHandedYawOffset = 0f;
-
-    [Tooltip("Seconds after release before the stick is hidden.")]
-    [Min(0f)]
-    public float hideStickDelay = 0.1f;
 
     [Header("Debug")]
     [Tooltip("Log each shot start and release, including the clip time it released at.")]
