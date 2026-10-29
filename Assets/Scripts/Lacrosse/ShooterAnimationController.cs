@@ -113,6 +113,12 @@ public class ShooterAnimationController : MonoBehaviour
     [Range(-180f, 180f)]
     public float rightHandedYawOffset = 0f;
 
+    [Tooltip("At the start of Play, fill the stick's Right Handed Grip by mirroring the tuned " +
+             "left-handed grip (same as the Mirror Stick Grip To Right Hand menu), so it never needs " +
+             "copying over. Right Grip's Roll Offset / Stick Rotation still apply on top. Turn off to " +
+             "use Right Grip values captured by hand instead.")]
+    public bool mirrorRightGripOnStart = true;
+
     [Header("Debug")]
     [Tooltip("Log each shot start and release, including the clip time it released at.")]
     public bool logRelease = false;
@@ -255,6 +261,20 @@ public class ShooterAnimationController : MonoBehaviour
     {
         if (Application.isPlaying && _initialized && !_turning && bodyRoot != null)
             bodyRoot.localRotation = BodyRotationFor(_stanceRightHanded);
+    }
+
+    // Start, not Awake, so the Animator and the stick grip are set up before posing.
+    void Start()
+    {
+        if (!mirrorRightGripOnStart || !CanMirrorGrip(warn: false)) return;
+
+        MirrorGrip(log: false);
+
+        // Back to the left-handed stance the scene starts in.
+        _stanceRightHanded = false;
+        SetGrip(false);
+        TurnBody(false, 0f);
+        PoseNow(_idleHash);
     }
 
     /// <summary>LateUpdate, not Update: the Animator has evaluated this frame and the stick grip
@@ -550,13 +570,29 @@ public class ShooterAnimationController : MonoBehaviour
             Debug.LogWarning("[ShooterAnimationController] Mirror Stick Grip only works in Play mode.", this);
             return;
         }
-        if (!IsAvailable || !_hasIdle || !_hasRightIdle || stickGrip == null)
-        {
-            Debug.LogWarning($"[ShooterAnimationController] Mirror Stick Grip needs the '{idleStateName}' and " +
-                             $"'{rightIdleStateName}' states and a Stick Grip.", this);
-            return;
-        }
+        if (!CanMirrorGrip(warn: true)) return;
 
+        bool ok = MirrorGrip(log: true);
+        _stanceRightHanded = ok;
+        if (!ok)
+        {
+            TurnBody(false, 0f);
+            PoseNow(_idleHash);
+        }
+    }
+
+    private bool CanMirrorGrip(bool warn)
+    {
+        bool can = IsAvailable && _hasIdle && _hasRightIdle && stickGrip != null && stickGrip.HasRightGrip;
+        if (!can && warn)
+            Debug.LogWarning($"[ShooterAnimationController] Mirror Stick Grip needs the '{idleStateName}' and " +
+                             $"'{rightIdleStateName}' states and a Stick Grip with Right Grip's hand bones.", this);
+        return can;
+    }
+
+    // Mirrors the grip and leaves the avatar in the right-handed stance with it applied.
+    private bool MirrorGrip(bool log)
+    {
         _watching = false;
         _returnPending = false;
         _hideStickTimer = -1f;
@@ -564,15 +600,8 @@ public class ShooterAnimationController : MonoBehaviour
 
         // Both poses are sampled at the same facing, so the mirror plane is the same for both.
         TurnBody(true, 0f);
-        bool ok = stickGrip.MirrorLeftGripOntoRight(animator.transform,
-            () => PoseNow(_idleHash), () => PoseNow(_rightIdleHash));
-
-        _stanceRightHanded = ok;
-        if (!ok)
-        {
-            TurnBody(false, 0f);
-            PoseNow(_idleHash);
-        }
+        return stickGrip.MirrorLeftGripOntoRight(animator.transform,
+            () => PoseNow(_idleHash), () => PoseNow(_rightIdleHash), log);
     }
 
     // Poses the avatar in a state's first frame right now (works while paused).

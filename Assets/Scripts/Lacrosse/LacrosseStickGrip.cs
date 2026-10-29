@@ -198,7 +198,8 @@ public class LacrosseStickGrip : MonoBehaviour
 
     // ── Active grip set ───────────────────────────────────────────
 
-    private bool HasRightGrip =>
+    /// <summary>True when Right Handed Grip has both hand bones, so it can be used or mirrored into.</summary>
+    public bool HasRightGrip =>
         rightGrip != null && rightGrip.bottomHandBone != null && rightGrip.topHandBone != null;
 
     // Right Handed without its bones falls back to the left-handed grip (warned once).
@@ -482,9 +483,11 @@ public class LacrosseStickGrip : MonoBehaviour
     /// is solved, reflected across mirrorRoot's center plane (its local YZ plane, the plane
     /// Humanoid mirroring reflects across), and captured against the right-handed pose, like
     /// Capture Grip From Current Pose. The top hand fix is mirrored too. A starting point: the
-    /// retarget isn't perfectly symmetric, so touch up with Capture if needed. Ends right-handed.
+    /// retarget isn't perfectly symmetric: Right Grip's Roll Offset and Stick Rotation are kept
+    /// and still apply on top, as tweaks. Ends right-handed.
     /// </summary>
-    public bool MirrorLeftGripOntoRight(Transform mirrorRoot, System.Action poseLeft, System.Action poseRight)
+    public bool MirrorLeftGripOntoRight(Transform mirrorRoot, System.Action poseLeft, System.Action poseRight,
+                                        bool log = true)
     {
         if (rightHandBone == null || leftHandBone == null || !HasRightGrip)
         {
@@ -528,8 +531,6 @@ public class LacrosseStickGrip : MonoBehaviour
         rightGrip.rollReferenceAxis = rightGrip.rollReference != null
             ? rightGrip.rollReference.InverseTransformDirection(pocketDir)
             : pocketDir;
-        rightGrip.rollOffset = 0f;
-        rightGrip.stickRotation = Vector3.zero;   // the mirrored pose already includes the lefty's
 
         // Top hand fix: mirror the left hand's world-space turn away from the clip and put it on
         // the right hand, stored in the same rotation space as the left hand's.
@@ -562,10 +563,12 @@ public class LacrosseStickGrip : MonoBehaviour
         // Show the result now, even while paused.
         Solve();
 
-        Debug.Log($"[LacrosseStickGrip] Mirrored the left-handed grip: Bottom Palm Offset " +
-                  $"{rightGrip.bottomPalmOffset:F3}, Top Palm Offset {rightGrip.topPalmOffset:F3}, Roll " +
-                  $"Reference Axis {rightGrip.rollReferenceAxis:F3}, Align Top Hand {rightGrip.alignTopHand}. " +
-                  "Copy Component now, then Paste Component Values after leaving Play mode.", this);
+        if (log)
+            Debug.Log($"[LacrosseStickGrip] Mirrored the left-handed grip: Bottom Palm Offset " +
+                      $"{rightGrip.bottomPalmOffset:F3}, Top Palm Offset {rightGrip.topPalmOffset:F3}, Roll " +
+                      $"Reference Axis {rightGrip.rollReferenceAxis:F3}, Align Top Hand {rightGrip.alignTopHand}. " +
+                      "With the shooter's Mirror Right Grip On Start ticked this is redone every Play; " +
+                      "otherwise Copy Component now and Paste Component Values after leaving Play mode.", this);
         return true;
     }
 
