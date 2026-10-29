@@ -4,7 +4,7 @@ using UnityEngine;
 /// Spoken output for the headset, using Android's built-in text-to-speech engine
 /// (android.speech.tts.TextToSpeech) through JNI. Free and offline; nothing leaves the headset.
 /// Used by the post-session summary and the voice command replies
-/// (Plans/Future/Reviewed/Spoken_Summary_And_Voice_Commands_Plan.md).
+/// (Plans/Current/Spoken_Summary_And_Voice_Commands_Plan.md).
 ///
 ///   - Speak(text) cuts off anything already being said and says text. Called before the
 ///     engine has started, the latest text is kept and spoken once it's ready.
@@ -66,6 +66,7 @@ public class TextToSpeech : MonoBehaviour
     private AndroidJavaObject _tts;
     private InitListener _initListener; // held so the proxy isn't garbage collected
     private volatile int _initStatus = NoStatus; // written on the Android UI thread
+    private float _initStartTime;
     private bool _sawAudio;
     private int _utteranceCount;
 
@@ -93,6 +94,7 @@ public class TextToSpeech : MonoBehaviour
     void Awake()
     {
 #if UNITY_ANDROID && !UNITY_EDITOR
+        _initStartTime = Time.realtimeSinceStartup;
         try
         {
             using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
@@ -242,7 +244,7 @@ public class TextToSpeech : MonoBehaviour
         int status = _initStatus;
         if (status == NoStatus)
         {
-            if (Time.realtimeSinceStartup > initTimeout)
+            if (Time.realtimeSinceStartup - _initStartTime > initTimeout)
                 Fail($"No text-to-speech engine started within {initTimeout} s.");
             return;
         }
