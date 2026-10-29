@@ -96,11 +96,6 @@ public class LacrosseStickGrip : MonoBehaviour
     [Range(-180f, 180f)]
     public float rollOffset = 0f;
 
-    [Tooltip("Turns the whole stick around its bottom grip point after the grip is solved, in degrees: " +
-             "X tilts the head toward/away from the pocket side, Y swings it sideways, Z spins it " +
-             "around the shaft. X/Y move the shaft off the top hand. Live in Play mode, even paused.")]
-    public Vector3 stickRotation = Vector3.zero;
-
     /// <summary>What the top hand's grip rotation is measured against.</summary>
     public enum HandRotationSpace
     {
@@ -161,11 +156,6 @@ public class LacrosseStickGrip : MonoBehaviour
                  "after the roll reference. Drag it in Play mode; it shows right away, even paused.")]
         [Range(-180f, 180f)]
         public float rollOffset = 0f;
-
-        [Tooltip("Turns the whole stick around its bottom grip point after the grip is solved, in degrees: " +
-                 "X tilts the head toward/away from the pocket side, Y swings it sideways, Z spins it " +
-                 "around the shaft. X/Y move the shaft off the top hand. Live in Play mode, even paused.")]
-        public Vector3 stickRotation = Vector3.zero;
 
         [Tooltip("Overrides the top (right) hand bone's rotation every frame with Top Hand Grip " +
                  "Rotation. Same as Align Left Hand, for the right-handed shot.")]
@@ -231,12 +221,6 @@ public class LacrosseStickGrip : MonoBehaviour
     {
         get => UseRight ? rightGrip.rollOffset : rollOffset;
         set { if (UseRight) rightGrip.rollOffset = value; else rollOffset = value; }
-    }
-
-    private Vector3 StickRotation
-    {
-        get => UseRight ? rightGrip.stickRotation : stickRotation;
-        set { if (UseRight) rightGrip.stickRotation = value; else stickRotation = value; }
     }
 
     private bool AlignTop
@@ -315,11 +299,8 @@ public class LacrosseStickGrip : MonoBehaviour
         _lastPocketDir = pocketDir;
 
         // Map the stick's local (shaft, pocket) frame onto the world (shaft, pocket) frame.
-        // Stick Rotation is in the (side, pocket, shaft) frame, so its X/Y/Z read the same for
-        // either hand.
         Quaternion worldFrame = Quaternion.LookRotation(shaftDir, pocketDir)
-                              * Quaternion.AngleAxis(RollOffset, Vector3.forward)
-                              * Quaternion.Euler(StickRotation);
+                              * Quaternion.AngleAxis(RollOffset, Vector3.forward);
         transform.rotation = worldFrame * Quaternion.Inverse(LocalFrame());
 
         // Slide the stick so its bottom grip point lands in the bottom palm.
@@ -425,7 +406,6 @@ public class LacrosseStickGrip : MonoBehaviour
             Transform rollRef = RollRef;
             RollAxis = rollRef != null ? rollRef.InverseTransformDirection(pocketNow) : pocketNow;
             RollOffset = 0f;
-            StickRotation = Vector3.zero;   // the captured pose already includes any turn
         }
 
         string set = UseRight ? "right-handed" : "left-handed";
@@ -483,8 +463,8 @@ public class LacrosseStickGrip : MonoBehaviour
     /// is solved, reflected across mirrorRoot's center plane (its local YZ plane, the plane
     /// Humanoid mirroring reflects across), and captured against the right-handed pose, like
     /// Capture Grip From Current Pose. The top hand fix is mirrored too. A starting point: the
-    /// retarget isn't perfectly symmetric: Right Grip's Roll Offset and Stick Rotation are kept
-    /// and still apply on top, as tweaks. Ends right-handed.
+    /// retarget isn't perfectly symmetric: Right Grip's Roll Offset is kept and still applies on
+    /// top, as a tweak. Ends right-handed.
     /// </summary>
     public bool MirrorLeftGripOntoRight(Transform mirrorRoot, System.Action poseLeft, System.Action poseRight,
                                         bool log = true)

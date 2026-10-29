@@ -115,7 +115,7 @@ public class ShooterAnimationController : MonoBehaviour
 
     [Tooltip("At the start of Play, fill the stick's Right Handed Grip by mirroring the tuned " +
              "left-handed grip (same as the Mirror Stick Grip To Right Hand menu), so it never needs " +
-             "copying over. Right Grip's Roll Offset / Stick Rotation still apply on top. Turn off to " +
+             "copying over. Right Grip's Roll Offset still applies on top. Turn off to " +
              "use Right Grip values captured by hand instead.")]
     public bool mirrorRightGripOnStart = true;
 
