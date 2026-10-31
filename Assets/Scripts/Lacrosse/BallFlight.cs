@@ -63,7 +63,8 @@ public struct BallFlightSettings
 /// (semi-implicit Euler at Time.fixedDeltaTime, v += a·dt then x += v·dt), so predictions match
 /// the real flight: RandomLauncher solves each launch with it so drag and spin don't pull the
 /// shot off its aim point, and GoalDetector / ShotPathRecorder project a saved shot along it.
-/// The predictor adds Physics.gravity when asked to (when the ball flies under Unity gravity).
+/// The predictor is given the gravity to use (RandomLauncher.ShotGravity on the way to the goal,
+/// zero when the ball isn't under gravity).
 ///
 /// Spin is fixed per shot: the solve picks it (see <see cref="SolveLaunchVelocity"/>) and
 /// <see cref="BeginFlight"/> applies that same spin, so solve and flight always agree.
@@ -191,7 +192,7 @@ public class BallFlight : MonoBehaviour
 
     /// <summary>
     /// Launch velocity at <paramref name="speed"/> that arcs from <paramref name="origin"/> onto
-    /// <paramref name="target"/> under Unity gravity plus drag and spin, crossing the plane
+    /// <paramref name="target"/> under <paramref name="gravity"/> plus drag and spin, crossing the plane
     /// z = target.z at the target. <paramref name="spin"/> is the spin it was solved with — pass
     /// it to <see cref="BeginFlight"/>.
     ///
@@ -204,10 +205,10 @@ public class BallFlight : MonoBehaviour
     /// Without spin the path can't reach the floor. If even that can't get within 1 cm (speed
     /// too low to reach), logs a warning and returns the best try.
     /// </summary>
-    public Vector3 SolveLaunchVelocity(Vector3 origin, Vector3 target, float speed, out Vector3 spin)
+    public Vector3 SolveLaunchVelocity(Vector3 origin, Vector3 target, float speed, Vector3 gravity, out Vector3 spin)
     {
         Vector3 firstGuess = QuadrantMath.ComputeBallisticLaunchVelocity(
-            origin, target, speed, Physics.gravity, Time.fixedDeltaTime);
+            origin, target, speed, gravity, Time.fixedDeltaTime);
 
         Vector3 fullSpin = settings.useSpin ? ShotSpin(firstGuess) : Vector3.zero;
         // minY includes the crossing itself, so a target below floor + radius would always
@@ -219,7 +220,7 @@ public class BallFlight : MonoBehaviour
         for (int i = 0; i < SpinScales.Length; i++)
         {
             Vector3 trySpin = fullSpin * SpinScales[i];
-            Vector3 velocity = SolveAim(origin, target, speed, firstGuess, trySpin,
+            Vector3 velocity = SolveAim(origin, target, speed, firstGuess, trySpin, gravity,
                                         out float miss, out float minY);
 
             bool lastTry = trySpin == Vector3.zero;
@@ -248,22 +249,22 @@ public class BallFlight : MonoBehaviour
     }
 
     /// <summary>Where a ball at <paramref name="pos"/> with <paramref name="vel"/> crosses the
-    /// plane z = <paramref name="planeZ"/>, and how long it takes, under drag and the current
-    /// shot's spin (plus Physics.gravity when <paramref name="withGravity"/>). Returns false if
-    /// it isn't moving toward the plane or doesn't reach it within a few seconds.</summary>
-    public bool PredictPlaneCrossing(Vector3 pos, Vector3 vel, float planeZ, bool withGravity,
+    /// plane z = <paramref name="planeZ"/>, and how long it takes, under drag, the current
+    /// shot's spin and <paramref name="gravity"/> (zero for none). Returns false if it isn't
+    /// moving toward the plane or doesn't reach it within a few seconds.</summary>
+    public bool PredictPlaneCrossing(Vector3 pos, Vector3 vel, float planeZ, Vector3 gravity,
                                      out Vector3 crossing, out float time)
     {
-        return Simulate(pos, vel, _flightSpin, planeZ, withGravity, null, 0f, 0,
+        return Simulate(pos, vel, _flightSpin, planeZ, gravity, null, 0f, 0,
                         out crossing, out time, out _, out _);
     }
 
-    /// <inheritdoc cref="PredictPlaneCrossing(Vector3, Vector3, float, bool, out Vector3, out float)"/>
+    /// <inheritdoc cref="PredictPlaneCrossing(Vector3, Vector3, float, Vector3, out Vector3, out float)"/>
     /// <param name="arrivalVelocity">The ball's velocity at the crossing.</param>
-    public bool PredictPlaneCrossing(Vector3 pos, Vector3 vel, float planeZ, bool withGravity,
+    public bool PredictPlaneCrossing(Vector3 pos, Vector3 vel, float planeZ, Vector3 gravity,
                                      out Vector3 crossing, out float time, out Vector3 arrivalVelocity)
     {
-        return Simulate(pos, vel, _flightSpin, planeZ, withGravity, null, 0f, 0,
+        return Simulate(pos, vel, _flightSpin, planeZ, gravity, null, 0f, 0,
                         out crossing, out time, out arrivalVelocity, out _);
     }
 
@@ -272,10 +273,10 @@ public class BallFlight : MonoBehaviour
     /// (at most <paramref name="maxPoints"/>), ending exactly on the crossing. Just the start
     /// point if it never reaches the plane.</summary>
     public Vector3[] SamplePathToPlane(Vector3 pos, Vector3 vel, float planeZ, float spacing,
-                                       int maxPoints, bool withGravity)
+                                       int maxPoints, Vector3 gravity)
     {
         var points = new List<Vector3>();
-        Simulate(pos, vel, _flightSpin, planeZ, withGravity, points, spacing, Mathf.Max(maxPoints, 2),
+        Simulate(pos, vel, _flightSpin, planeZ, gravity, points, spacing, Mathf.Max(maxPoints, 2),
                  out _, out _, out _, out _);
         return points.ToArray();
     }
@@ -303,7 +304,7 @@ public class BallFlight : MonoBehaviour
     /// <summary>The aim correction loop for one spin. Returns the best velocity found, its miss
     /// distance, and the lowest point of its path before the plane.</summary>
     private Vector3 SolveAim(Vector3 origin, Vector3 target, float speed, Vector3 firstGuess,
-                             Vector3 spin, out float bestMiss, out float bestMinY)
+                             Vector3 spin, Vector3 gravity, out float bestMiss, out float bestMinY)
     {
         Vector3 velocity = firstGuess;
         Vector3 best = velocity;
@@ -328,7 +329,7 @@ public class BallFlight : MonoBehaviour
 
         for (int i = 0; i < SolveIterations; i++)
         {
-            if (!Simulate(origin, velocity, spin, target.z, true, null, 0f, 0,
+            if (!Simulate(origin, velocity, spin, target.z, gravity, null, 0f, 0,
                           out Vector3 hit, out _, out _, out float minY))
                 break;
 
@@ -353,7 +354,7 @@ public class BallFlight : MonoBehaviour
     /// interpolates within the last step for the exact point (as GoalDetector does between
     /// frames). If <paramref name="samples"/> is given, fills it with the path, start to crossing.
     /// <paramref name="minY"/> is the lowest height on the way.</summary>
-    private bool Simulate(Vector3 pos, Vector3 vel, Vector3 spin, float planeZ, bool withGravity,
+    private bool Simulate(Vector3 pos, Vector3 vel, Vector3 spin, float planeZ, Vector3 gravity,
                           List<Vector3> samples, float spacing, int maxPoints,
                           out Vector3 crossing, out float time, out Vector3 arrivalVelocity, out float minY)
     {
@@ -370,7 +371,6 @@ public class BallFlight : MonoBehaviour
         if (vel.z * side <= 0f) return false;
 
         float dt = Time.fixedDeltaTime;
-        Vector3 gravity = withGravity ? Physics.gravity : Vector3.zero;
         int maxSteps = Mathf.CeilToInt(MaxPredictTime / dt);
         Vector3 lastSample = pos;
 

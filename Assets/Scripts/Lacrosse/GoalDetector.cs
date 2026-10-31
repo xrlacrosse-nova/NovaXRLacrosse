@@ -42,6 +42,7 @@ public class GoalDetector : MonoBehaviour
 
     private Rigidbody _rb;          // the ball's, if any; tells a save whether gravity is on
     private BallFlight _ballFlight; // optional: projects a save along the drag-aware path
+    private RandomLauncher _launcher; // optional: knows the gravity the shot flies under
     private bool _active = false;   // true after OnBallLaunched()
     private bool _goalScored = false;
     private bool _saved = false;
@@ -95,12 +96,17 @@ public class GoalDetector : MonoBehaviour
     /// (kinematic) right after, so its Rigidbody can't be read from an OnSaved handler.</summary>
     public bool SaveUsedGravity { get; private set; }
 
+    /// <summary>The gravity on the ball when the current shot was saved (zero if none), so the
+    /// projection follows the path it was really on. Captured at the touch, like SaveUsedGravity.</summary>
+    public Vector3 SaveGravity { get; private set; }
+
     // ── lifecycle ─────────────────────────────────────────────────
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         _ballFlight = GetComponent<BallFlight>();
+        _launcher = GetComponent<RandomLauncher>();
     }
 
     void Update()
@@ -202,6 +208,9 @@ public class GoalDetector : MonoBehaviour
         SaveContactPosition = contactPos;
         SaveContactVelocity = ballVelocity;
         SaveUsedGravity = _rb != null && _rb.useGravity && !_rb.isKinematic;
+        SaveGravity = !SaveUsedGravity ? Vector3.zero
+                    : _launcher != null ? _launcher.ShotGravity
+                    : Physics.gravity;
 
         _popupText = "SAVE!";
         _popupColor = UiPalette.Save;
@@ -225,7 +234,7 @@ public class GoalDetector : MonoBehaviour
     {
         if (_ballFlight != null)
         {
-            return _ballFlight.PredictPlaneCrossing(pos, velocity, goalGateCenter.z, SaveUsedGravity,
+            return _ballFlight.PredictPlaneCrossing(pos, velocity, goalGateCenter.z, SaveGravity,
                                                     out Vector3 crossing, out _)
                 ? crossing
                 : pos;
@@ -233,7 +242,7 @@ public class GoalDetector : MonoBehaviour
 
         if (SaveUsedGravity)
         {
-            return QuadrantMath.BallisticPlaneCrossing(pos, velocity, Physics.gravity,
+            return QuadrantMath.BallisticPlaneCrossing(pos, velocity, SaveGravity,
                                                        goalGateCenter.z, out Vector3 crossing, out _)
                 ? crossing
                 : pos;

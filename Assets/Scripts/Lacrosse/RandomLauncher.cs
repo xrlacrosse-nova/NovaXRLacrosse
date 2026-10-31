@@ -78,6 +78,12 @@ public class RandomLauncher : MonoBehaviour
              "with custom gravity only after the goal plane (old behavior).")]
     public bool useUnityGravity = true;
 
+    [Tooltip("Fraction of gravity on the ball on its way to the goal, for a flatter shot at the " +
+             "same speed. Only used with Use Unity Gravity on. The aim accounts for it. Back to " +
+             "full gravity once the ball crosses the goal plane or hits anything. 1 = real gravity.")]
+    [Range(0f, 1f)]
+    public float shotGravityScale = 0.25f;
+
     [Header("Ball Reset")]
     [Tooltip("If true, the ball teleports back to LaunchOrigin and resets GoalDetector state " +
              "each time LaunchBall() is called, so you can test repeatedly in the editor.")]
@@ -145,6 +151,9 @@ public class RandomLauncher : MonoBehaviour
     // falling state (custom gravity after the plane; only when useUnityGravity is off)
     private bool _falling = false;
 
+    // True from launch until the ball crosses the plane or hits anything (see shotGravityScale).
+    private bool _reducedGravity = false;
+
     // session state
     private bool _sessionRunning = false;
     private int _shotsFiredThisSession = 0;
@@ -186,6 +195,10 @@ public class RandomLauncher : MonoBehaviour
 
     /// <summary>Release speed (m/s) of the most recent shot, after the per-shot variance.</summary>
     public float LastLaunchSpeed { get; private set; }
+
+    /// <summary>The gravity on the ball right now: scaled by shotGravityScale on its way to the
+    /// goal, otherwise full. Anything predicting the shot's flight must use this.</summary>
+    public Vector3 ShotGravity => _reducedGravity ? Physics.gravity * shotGravityScale : Physics.gravity;
 
     /// <summary>Fired when a new session begins (right as the pre-start countdown starts).</summary>
     public event System.Action OnSessionStarted;
@@ -286,6 +299,8 @@ public class RandomLauncher : MonoBehaviour
     /// gravity on, it's already falling; adding custom gravity would double it.</summary>
     private void HandlePlaneCrossed(Vector3 crossingPos)
     {
+        _reducedGravity = false;
+
         if (!useUnityGravity && enableCustomGravityOnGoal)
             BeginFalling();
     }
@@ -296,6 +311,8 @@ public class RandomLauncher : MonoBehaviour
     /// exactly as a floor landing does.</summary>
     private void HandleSaved(Vector3 projectedPos)
     {
+        _reducedGravity = false;
+
         if (_floorBoundary == null)
         {
             Debug.LogWarning("[RandomLauncher] Shot was saved but there's no FloorBoundary on the ball to " +
@@ -337,6 +354,22 @@ public class RandomLauncher : MonoBehaviour
         {
             _rb.AddForce(Vector3.down * customGravity, ForceMode.Acceleration);
         }
+
+        // Unity gravity stays on; this takes away the part the shot shouldn't have.
+        if (_reducedGravity && !_rb.isKinematic)
+        {
+            _rb.AddForce(Physics.gravity * (shotGravityScale - 1f), ForceMode.Acceleration);
+        }
+    }
+
+    // A deflected ball falls normally. Logged because a hit on the way to the goal also pulls the
+    // shot below its aim point, which would otherwise be hard to trace.
+    void OnCollisionEnter(Collision collision)
+    {
+        if (!_reducedGravity) return;
+
+        _reducedGravity = false;
+        Debug.Log($"[RandomLauncher] Ball hit {collision.gameObject.name} — back to full gravity.");
     }
 
     // ── Session start ────────────────────────────────────────────
@@ -546,18 +579,21 @@ public class RandomLauncher : MonoBehaviour
         float spread = Mathf.Min(launchSpeedVariance, launchSpeed * 0.5f);
         float shotSpeed = Mathf.Max(1f, launchSpeed + Random.Range(-spread, spread));
 
+        // Set before the solve, so ShotGravity is the gravity this shot will fly under.
+        _reducedGravity = useUnityGravity;
+
         Vector3 launchVelocity;
         Vector3 spin = Vector3.zero;
         float flightTime;
         if (useUnityGravity && _ballFlight != null)
         {
-            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, shotSpeed, out spin);
+            launchVelocity = _ballFlight.SolveLaunchVelocity(origin, target, shotSpeed, ShotGravity, out spin);
             flightTime = 0f;   // set from the prediction below
         }
         else if (useUnityGravity)
         {
             launchVelocity = QuadrantMath.ComputeBallisticLaunchVelocity(
-                origin, target, shotSpeed, Physics.gravity, Time.fixedDeltaTime, out flightTime);
+                origin, target, shotSpeed, ShotGravity, Time.fixedDeltaTime, out flightTime);
         }
         else
         {
@@ -587,7 +623,8 @@ public class RandomLauncher : MonoBehaviour
         // Arrival speed is what the goalie actually faces after drag.
         string speedText = $"{speed:F1} m/s";
         if (_ballFlight != null &&
-            _ballFlight.PredictPlaneCrossing(origin, launchVelocity, target.z, useUnityGravity,
+            _ballFlight.PredictPlaneCrossing(origin, launchVelocity, target.z,
+                                             useUnityGravity ? ShotGravity : Vector3.zero,
                                              out _, out float predictedTime, out Vector3 arrivalVelocity))
         {
             flightTime = predictedTime;
