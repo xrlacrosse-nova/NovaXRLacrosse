@@ -1877,7 +1877,7 @@ MonoBehaviour:
     topPalmOffset: {x: 0, y: 0.08, z: 0}
     rollReference: {fileID: 1835460686}
     rollReferenceAxis: {x: 0, y: 0, z: 1}
-    rollOffset: -90
+    rollOffset: 0
     alignTopHand: 0
     topHandRotationSpace: 0
     topHandGripRotation: {x: 0, y: 0, z: 0}
