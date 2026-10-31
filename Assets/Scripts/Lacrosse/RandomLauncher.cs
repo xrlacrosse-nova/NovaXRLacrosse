@@ -196,9 +196,13 @@ public class RandomLauncher : MonoBehaviour
     /// <summary>Release speed (m/s) of the most recent shot, after the per-shot variance.</summary>
     public float LastLaunchSpeed { get; private set; }
 
-    /// <summary>The gravity on the ball right now: scaled by shotGravityScale on its way to the
-    /// goal, otherwise full. Anything predicting the shot's flight must use this.</summary>
-    public Vector3 ShotGravity => _reducedGravity ? Physics.gravity * shotGravityScale : Physics.gravity;
+    /// <summary>The Unity gravity on the ball right now: scaled by shotGravityScale on its way to
+    /// the goal, otherwise full, and zero with Use Unity Gravity off. Anything predicting the
+    /// shot's flight must use this.</summary>
+    public Vector3 ShotGravity =>
+        !useUnityGravity ? Vector3.zero
+        : _reducedGravity ? Physics.gravity * shotGravityScale
+        : Physics.gravity;
 
     /// <summary>Fired when a new session begins (right as the pre-start countdown starts).</summary>
     public event System.Action OnSessionStarted;
@@ -623,8 +627,7 @@ public class RandomLauncher : MonoBehaviour
         // Arrival speed is what the goalie actually faces after drag.
         string speedText = $"{speed:F1} m/s";
         if (_ballFlight != null &&
-            _ballFlight.PredictPlaneCrossing(origin, launchVelocity, target.z,
-                                             useUnityGravity ? ShotGravity : Vector3.zero,
+            _ballFlight.PredictPlaneCrossing(origin, launchVelocity, target.z, ShotGravity,
                                              out _, out float predictedTime, out Vector3 arrivalVelocity))
         {
             flightTime = predictedTime;

@@ -417,11 +417,7 @@ public class LacrosseStickGrip : MonoBehaviour
             // Roll Offset is now part of the axis, so the Relative To Stick frame turns by it.
             // Turn the grip rotation back by the same amount, so the top hand stays put.
             if (TopRotationSpace == HandRotationSpace.RelativeToStick)
-            {
-                Quaternion local = LocalFrame();
-                Quaternion undoRoll = local * Quaternion.AngleAxis(-RollOffset, Vector3.forward) * Quaternion.Inverse(local);
-                TopGripRotation = WrapEuler((undoRoll * Quaternion.Euler(TopGripRotation)).eulerAngles);
-            }
+                TopGripRotation = WrapEuler((UndoRollOffset() * Quaternion.Euler(TopGripRotation)).eulerAngles);
             RollOffset = 0f;
         }
 
@@ -461,9 +457,9 @@ public class LacrosseStickGrip : MonoBehaviour
                     : Quaternion.identity;
                 break;
             default:
-                // Before any solve (e.g. outside Play mode), the stick's rotation is all there is.
-                Quaternion stick = _animatedTopHand == topBone ? _stickBeforeRollOffset : transform.rotation;
-                captured = Quaternion.Inverse(stick) * current;
+                // From where the stick is now, not the last solve: it may have been moved by hand
+                // with this component disabled. Relative To Stick excludes Roll Offset.
+                captured = Quaternion.Inverse(transform.rotation * UndoRollOffset()) * current;
                 break;
         }
         TopGripRotation = WrapEuler(captured.eulerAngles);
@@ -628,6 +624,13 @@ public class LacrosseStickGrip : MonoBehaviour
     private static Vector3 PalmPosition(Transform bone, Vector3 offset)
     {
         return bone.position + bone.rotation * offset;
+    }
+
+    // Multiply the stick's rotation by this, on the right, to take the active Roll Offset back out.
+    private Quaternion UndoRollOffset()
+    {
+        Quaternion local = LocalFrame();
+        return local * Quaternion.AngleAxis(-RollOffset, Vector3.forward) * Quaternion.Inverse(local);
     }
 
     private Quaternion LocalFrame()
