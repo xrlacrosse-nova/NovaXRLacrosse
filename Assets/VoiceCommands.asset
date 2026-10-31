@@ -14,18 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: MagicLeap.SDK::MLVoiceIntentsConfiguration
   AllVoiceIntents: []
   VoiceCommandsToAdd:
-  - Id: 1
-    Value: High School | Difficulty high school
-  - Id: 2
-    Value: College | Difficulty college
-  - Id: 3
-    Value: Pro | Difficulty Pro
-  - Id: 4
-    Value: Lifetime | Show lifetime
-  - Id: 5
-    Value: Last session | Show last session
   - Id: 6
     Value: Repeat | Repeat summary
+  - Id: 5
+    Value: Last session | Show last session
+  - Id: 4
+    Value: Lifetime | Show lifetime
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []
