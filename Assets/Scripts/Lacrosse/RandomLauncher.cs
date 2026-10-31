@@ -135,6 +135,12 @@ public class RandomLauncher : MonoBehaviour
     private FloorBoundary _floorBoundary;
     private BallFlight _ballFlight;   // optional: air drag + drag-aware aim
     private LacrosseStickGrip _stickGrip;   // optional: the stick LaunchOrigin rides on, for the exit log
+    private Renderer _ballRenderer;
+    private bool _ballWarmedUp = false;     // true once the ball has been drawn this app run
+
+    // Ball warm-up: far enough to be in view, small enough (about 0.6 mm wide) not to be seen.
+    private const float WarmUpDistance = 2f;
+    private const float WarmUpScale = 0.01f;
 
     // falling state (custom gravity after the plane; only when useUnityGravity is off)
     private bool _falling = false;
@@ -195,6 +201,7 @@ public class RandomLauncher : MonoBehaviour
         _goalDetector = GetComponent<GoalDetector>();
         _floorBoundary = GetComponent<FloorBoundary>();
         _ballFlight = GetComponent<BallFlight>();
+        _ballRenderer = GetComponent<Renderer>();
 
         // The ballistic aim assumes no damping (BallFlight adds real drag itself). Interpolation smooths the arc between physics steps.
 #if UNITY_6000_0_OR_NEWER
@@ -356,6 +363,9 @@ public class RandomLauncher : MonoBehaviour
 
         OnSessionStarted?.Invoke();
 
+        if (!_ballWarmedUp)
+            yield return StartCoroutine(WarmUpBall());
+
         float delay = Random.Range(minPreStartDelay, maxPreStartDelay);
         _countdownRemaining = delay;
         _showCountdown = true;
@@ -370,6 +380,51 @@ public class RandomLauncher : MonoBehaviour
         _showCountdown = false;
         _goDisplayTimer = GoDisplayDuration;
         FireNextShot();
+    }
+
+    /// <summary>Draws the ball once, tiny and in front of the camera, so the one-time cost of its
+    /// first draw lands here, before the countdown, instead of on shot 1's release frame. It has
+    /// to be in view: an off-screen draw doesn't create the pipeline state.
+    /// Expects the ball hidden (kinematic, collider off), so it can't fall or touch anything.
+    /// See Plans/Future/Reviewed/First_Shot_Latency_Plan.md.</summary>
+    private IEnumerator WarmUpBall()
+    {
+        _ballWarmedUp = true;
+
+        // Without a FloorBoundary the ball is never hidden, so it has already been drawn.
+        if (_floorBoundary == null || _ballRenderer == null) yield break;
+
+        Camera cam = Camera.main;
+        if (cam == null)
+        {
+            Debug.LogWarning("[RandomLauncher] No main camera for the ball warm-up — skipping it. " +
+                             "Shot 1 may hitch on release.");
+            yield break;
+        }
+
+        Vector3 startPosition = transform.position;
+        Vector3 startScale = transform.localScale;
+        RigidbodyInterpolation startInterpolation = _rb.interpolation;
+
+        // Interpolation would pull the ball back toward its old position on the next frame.
+        _rb.interpolation = RigidbodyInterpolation.None;
+
+        Vector3 warmUpPosition = cam.transform.position + cam.transform.forward * WarmUpDistance;
+        _rb.position = warmUpPosition;
+        transform.position = warmUpPosition;
+        transform.localScale = startScale * WarmUpScale;
+        _ballRenderer.enabled = true;
+
+        yield return null;
+        yield return null;
+
+        // Hide() turns the renderer back off. The position is restored too, so a launch with
+        // Auto Reset On Launch off doesn't start from the warm-up spot.
+        _floorBoundary.Hide();
+        transform.localScale = startScale;
+        _rb.position = startPosition;
+        transform.position = startPosition;
+        _rb.interpolation = startInterpolation;
     }
 
     private void FireNextShot()
