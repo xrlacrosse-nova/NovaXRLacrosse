@@ -1865,7 +1865,7 @@ MonoBehaviour:
   stickLength: 53.6
   rollReference: {fileID: 17038138}
   rollReferenceAxis: {x: 0, y: 0, z: 1}
-  rollOffset: 0
+  rollOffset: 90
   alignLeftHand: 1
   leftHandRotationSpace: 0
   leftHandGripRotation: {x: 222, y: 61, z: 170}
@@ -1877,7 +1877,7 @@ MonoBehaviour:
     topPalmOffset: {x: 0, y: 0.08, z: 0}
     rollReference: {fileID: 1835460686}
     rollReferenceAxis: {x: 0, y: 0, z: 1}
-    rollOffset: 0
+    rollOffset: -90
     alignTopHand: 0
     topHandRotationSpace: 0
     topHandGripRotation: {x: 0, y: 0, z: 0}
