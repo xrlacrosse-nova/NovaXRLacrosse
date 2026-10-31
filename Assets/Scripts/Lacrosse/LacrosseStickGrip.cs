@@ -92,14 +92,16 @@ public class LacrosseStickGrip : MonoBehaviour
     public Vector3 rollReferenceAxis = Vector3.forward;
 
     [Tooltip("Turns the stick head (the whole stick, around the shaft) by this many degrees, " +
-             "after the roll reference. Drag it in Play mode; it shows right away, even paused.")]
+             "after the roll reference. The stick turns inside the hands: a Relative To Stick hand " +
+             "stays put. Drag it in Play mode; it shows right away, even paused.")]
     [Range(-180f, 180f)]
     public float rollOffset = 0f;
 
     /// <summary>What the top hand's grip rotation is measured against.</summary>
     public enum HandRotationSpace
     {
-        /// <summary>Fixed rotation relative to the stick; the hand follows the stick.</summary>
+        /// <summary>Fixed rotation relative to the stick before Roll Offset; the hand follows the
+        /// stick, but Roll Offset turns the stick inside the hand.</summary>
         RelativeToStick,
         /// <summary>Replaces the wrist's local rotation (relative to the forearm).</summary>
         RelativeToForearm,
@@ -114,7 +116,7 @@ public class LacrosseStickGrip : MonoBehaviour
     public bool alignLeftHand = false;
 
     [Tooltip("What Left Hand Grip Rotation is relative to. Relative To Stick: hand locked to the " +
-             "stick. Relative To Forearm: a fixed wrist angle. Offset From Animation: a turn added " +
+             "stick, ignoring Roll Offset. Relative To Forearm: a fixed wrist angle. Offset From Animation: a turn added " +
              "on top of the clip.")]
     public HandRotationSpace leftHandRotationSpace = HandRotationSpace.RelativeToStick;
 
@@ -153,7 +155,8 @@ public class LacrosseStickGrip : MonoBehaviour
         public Vector3 rollReferenceAxis = Vector3.forward;
 
         [Tooltip("Turns the stick head (the whole stick, around the shaft) by this many degrees, " +
-                 "after the roll reference. Drag it in Play mode; it shows right away, even paused.")]
+                 "after the roll reference. The stick turns inside the hands: a Relative To Stick " +
+                 "hand stays put. Drag it in Play mode; it shows right away, even paused.")]
         [Range(-180f, 180f)]
         public float rollOffset = 0f;
 
@@ -177,6 +180,10 @@ public class LacrosseStickGrip : MonoBehaviour
 
     // Last good pocket direction, used when the roll reference lines up with the shaft.
     private Vector3 _lastPocketDir = Vector3.up;
+
+    // The stick's rotation from the last solve, before Roll Offset. What Relative To Stick means,
+    // so Roll Offset turns the stick inside the top hand instead of dragging the hand with it.
+    private Quaternion _stickBeforeRollOffset = Quaternion.identity;
 
     // The clip's top hand rotation this frame, before the fix, and which bone it belongs to. Lets
     // Inspector edits re-apply the fix while paused, when LateUpdate doesn't run and the Animator
@@ -299,9 +306,10 @@ public class LacrosseStickGrip : MonoBehaviour
         _lastPocketDir = pocketDir;
 
         // Map the stick's local (shaft, pocket) frame onto the world (shaft, pocket) frame.
-        Quaternion worldFrame = Quaternion.LookRotation(shaftDir, pocketDir)
-                              * Quaternion.AngleAxis(RollOffset, Vector3.forward);
-        transform.rotation = worldFrame * Quaternion.Inverse(LocalFrame());
+        Quaternion worldFrame = Quaternion.LookRotation(shaftDir, pocketDir);
+        Quaternion toStick = Quaternion.Inverse(LocalFrame());
+        _stickBeforeRollOffset = worldFrame * toStick;
+        transform.rotation = worldFrame * Quaternion.AngleAxis(RollOffset, Vector3.forward) * toStick;
 
         // Slide the stick so its bottom grip point lands in the bottom palm.
         transform.position += bottomPalm - transform.TransformPoint(bottomGripPoint);
@@ -333,7 +341,7 @@ public class LacrosseStickGrip : MonoBehaviour
             case HandRotationSpace.OffsetFromAnimation:
                 return _animatedTopHandRotation * grip;
             default:
-                return transform.rotation * grip;
+                return _stickBeforeRollOffset * grip;
         }
     }
 
@@ -405,6 +413,15 @@ public class LacrosseStickGrip : MonoBehaviour
             pocketNow.Normalize();
             Transform rollRef = RollRef;
             RollAxis = rollRef != null ? rollRef.InverseTransformDirection(pocketNow) : pocketNow;
+
+            // Roll Offset is now part of the axis, so the Relative To Stick frame turns by it.
+            // Turn the grip rotation back by the same amount, so the top hand stays put.
+            if (TopRotationSpace == HandRotationSpace.RelativeToStick)
+            {
+                Quaternion local = LocalFrame();
+                Quaternion undoRoll = local * Quaternion.AngleAxis(-RollOffset, Vector3.forward) * Quaternion.Inverse(local);
+                TopGripRotation = WrapEuler((undoRoll * Quaternion.Euler(TopGripRotation)).eulerAngles);
+            }
             RollOffset = 0f;
         }
 
@@ -444,7 +461,9 @@ public class LacrosseStickGrip : MonoBehaviour
                     : Quaternion.identity;
                 break;
             default:
-                captured = Quaternion.Inverse(transform.rotation) * current;
+                // Before any solve (e.g. outside Play mode), the stick's rotation is all there is.
+                Quaternion stick = _animatedTopHand == topBone ? _stickBeforeRollOffset : transform.rotation;
+                captured = Quaternion.Inverse(stick) * current;
                 break;
         }
         TopGripRotation = WrapEuler(captured.eulerAngles);
