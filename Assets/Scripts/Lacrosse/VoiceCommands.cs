@@ -16,7 +16,7 @@ using UnityEngine.InputSystem;
 ///     ignoreAfterSpeechSeconds of it finishing, are dropped.
 ///   - Every voice event is logged ("[VoiceCommands] Event ..."), since intents can fail to
 ///     fire without any error.
-///   - Editor: no voice. Keys stand in: 1/2/3 difficulty, L lifetime, H last session, R repeat.
+///   - Editor: no voice. Keys stand in: L lifetime, H last session, R repeat.
 /// No voice start: sessions start from the gaze target only.
 ///
 /// Setup: add to the "Voice" GameObject next to TextToSpeech and SessionSummarySpeaker, and
@@ -28,14 +28,11 @@ using UnityEngine.InputSystem;
 public class VoiceCommands : MonoBehaviour
 {
     // Intent ids; must match the Voice Intents Configuration asset.
-    public const int HighSchoolId = 1;
-    public const int CollegeId = 2;
-    public const int ProId = 3;
     public const int LifetimeId = 4;
     public const int LastSessionId = 5;
     public const int RepeatId = 6;
 
-    [Tooltip("Voice Intents Configuration asset (Assets > Create > MagicLeap) with ids 1–6.")]
+    [Tooltip("Voice Intents Configuration asset (Assets > Create > MagicLeap) with ids 4–6.")]
     public MLVoiceIntentsConfiguration voiceConfiguration;
 
     [Tooltip("Voice events this soon after our own speech ends are ignored, so a reply or " +
@@ -46,9 +43,6 @@ public class VoiceCommands : MonoBehaviour
     [Header("References")]
     [Tooltip("Leave empty to find the RandomLauncher in the scene.")]
     public RandomLauncher launcher;
-
-    [Tooltip("Leave empty to find the DifficultySelector in the scene.")]
-    public DifficultySelector difficulty;
 
     [Tooltip("Leave empty to find the SessionHistory in the scene.")]
     public SessionHistory history;
@@ -79,8 +73,6 @@ public class VoiceCommands : MonoBehaviour
 
         if (launcher == null)
             launcher = FindFirstObjectByType<RandomLauncher>();
-        if (difficulty == null)
-            difficulty = FindFirstObjectByType<DifficultySelector>();
         if (history == null)
             history = FindFirstObjectByType<SessionHistory>();
         if (players == null)
@@ -155,10 +147,7 @@ public class VoiceCommands : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null || SessionRunning) return;
 
-        if (keyboard.digit1Key.wasPressedThisFrame) HandleCommand(HighSchoolId);
-        else if (keyboard.digit2Key.wasPressedThisFrame) HandleCommand(CollegeId);
-        else if (keyboard.digit3Key.wasPressedThisFrame) HandleCommand(ProId);
-        else if (keyboard.lKey.wasPressedThisFrame) HandleCommand(LifetimeId);
+        if (keyboard.lKey.wasPressedThisFrame) HandleCommand(LifetimeId);
         else if (keyboard.hKey.wasPressedThisFrame) HandleCommand(LastSessionId);
         else if (keyboard.rKey.wasPressedThisFrame) HandleCommand(RepeatId);
 #endif
@@ -234,9 +223,6 @@ public class VoiceCommands : MonoBehaviour
 
         switch (id)
         {
-            case HighSchoolId: SelectDifficulty(Difficulty.HighSchool); break;
-            case CollegeId: SelectDifficulty(Difficulty.College); break;
-            case ProId: SelectDifficulty(Difficulty.Pro); break;
             case LifetimeId: ShowLifetime(); break;
             case LastSessionId: ShowLastSession(); break;
             case RepeatId: RepeatSummary(); break;
@@ -244,19 +230,6 @@ public class VoiceCommands : MonoBehaviour
                 Debug.LogWarning($"[VoiceCommands] Unknown intent id {id} — check the configuration asset.");
                 break;
         }
-    }
-
-    private void SelectDifficulty(Difficulty level)
-    {
-        if (difficulty == null)
-        {
-            Debug.LogWarning("[VoiceCommands] No DifficultySelector in the scene.");
-            return;
-        }
-
-        // Already on that level still replies, so the player knows they were heard.
-        if (difficulty.SetDifficulty(level))
-            _tts.Speak($"{difficulty.FindLevel(level).displayName} selected");
     }
 
     private void ShowLifetime()

@@ -185,7 +185,7 @@ public class ShotPathRecorder : MonoBehaviour
     {
         Vector3[] tail = _ballFlight.SamplePathToPlane(contact, velocity, _goalDetector.goalGateCenter.z,
                                                        minPointSpacing, maxPointsPerShot,
-                                                       _goalDetector.SaveUsedGravity);
+                                                       _goalDetector.SaveGravity);
         return tail.Length >= 2 ? tail : new[] { contact, projectedPos };
     }
 
@@ -195,7 +195,7 @@ public class ShotPathRecorder : MonoBehaviour
     /// <paramref name="projectedPos"/>.</summary>
     private Vector3[] SampleArcTail(Vector3 contact, Vector3 velocity, Vector3 projectedPos)
     {
-        Vector3 gravity = Physics.gravity;
+        Vector3 gravity = _goalDetector.SaveGravity;
         if (!QuadrantMath.BallisticPlaneCrossing(contact, velocity, gravity,
                                                  _goalDetector.goalGateCenter.z, out _, out float time))
             return new[] { contact, projectedPos };
