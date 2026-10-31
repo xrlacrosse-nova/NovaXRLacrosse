@@ -45,6 +45,10 @@ public class GazeStartTarget : MonoBehaviour
     [Min(0.01f)]
     public float targetRadius = 0.5f;
 
+    [Tooltip("Color of the part of the ring that fills in; replaces Ring Fill's Image color at startup. " +
+             "Use something bright: the headset's display is additive, so dark colors look see-through.")]
+    public Color fillColor = new Color(0f, 1f, 0f, 1f);
+
     [Tooltip("Build a dim full ring behind Ring Fill so the target is visible before it fills.")]
     public bool showTrack = true;
 
@@ -117,6 +121,9 @@ public class GazeStartTarget : MonoBehaviour
                              "itself or a parent — ignoring it. Move the ring and label under a child.");
             visualRoot = null;
         }
+
+        if (ringFill != null)
+            ringFill.color = fillColor;
 
         if (showTrack && ringFill != null)
             BuildTrack();
