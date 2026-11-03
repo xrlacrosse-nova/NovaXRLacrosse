@@ -122,11 +122,6 @@ namespace MagicLeap.Examples
         public bool IsTracked => isTrackedAction.IsPressed();
 
         /// <summary>
-        /// Is the Menu button held down right now? (Added for WorldPlacement's hold-to-recenter.)
-        /// </summary>
-        public bool MenuIsPressed => menuButtonAction.IsPressed();
-
-        /// <summary>
         /// The world position of the controller body where the user should be holding it.
         /// </summary>
         public Vector3 Position => positionAction.ReadValue<Vector3>();
