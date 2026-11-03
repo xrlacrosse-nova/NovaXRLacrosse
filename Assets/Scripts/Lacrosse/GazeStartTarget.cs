@@ -26,9 +26,24 @@ using UnityEngine.XR.OpenXR.Features.Interactions;
 /// Setup: put on a "StartTarget" GameObject beside the shooter, facing the goalie. Make the ring
 /// and START label children of Visual Root (hidden mid-session; this GameObject stays active to
 /// keep listening for session events). Ring Fill is an Image with Image Type = Filled, Radial 360.
+///
+/// Action = Recenter makes the same target a RECENTER button: a full ring calls
+/// WorldPlacement.Recenter() instead of starting a session (Plans/Current/World_Recenter_Plan.md).
+/// Every target, START or RECENTER, also hides while WorldPlacement is re-placing the world.
 /// </summary>
 public class GazeStartTarget : MonoBehaviour
 {
+    public enum TargetAction { StartSession, Recenter }
+
+    [Header("Action")]
+    [Tooltip("StartSession = START (RandomLauncher.TryStartSession). Recenter = RECENTER " +
+             "(WorldPlacement.Recenter).")]
+    public TargetAction action = TargetAction.StartSession;
+
+    [Tooltip("Leave empty to find the WorldPlacement in the scene. Needed for Recenter; for START it " +
+             "only hides the target while the world is being re-placed.")]
+    public WorldPlacement placement;
+
     [Header("Target")]
     [Tooltip("Ring + START label. Shown only while no session is running.")]
     public GameObject visualRoot;
@@ -110,8 +125,13 @@ public class GazeStartTarget : MonoBehaviour
     {
         if (launcher == null)
             launcher = FindFirstObjectByType<RandomLauncher>();
-        if (launcher == null)
+        if (launcher == null && action == TargetAction.StartSession)
             Debug.LogWarning("[GazeStartTarget] No RandomLauncher found — the START target can't start a session.");
+
+        if (placement == null)
+            placement = FindFirstObjectByType<WorldPlacement>();
+        if (placement == null && action == TargetAction.Recenter)
+            Debug.LogWarning("[GazeStartTarget] No WorldPlacement found — the RECENTER target can't recenter.");
 
         // Hiding this GameObject (or a parent) would also stop it listening for OnSessionEnded,
         // so the target would never come back.
@@ -161,8 +181,12 @@ public class GazeStartTarget : MonoBehaviour
         if (useEyeGaze && !Application.isEditor)
             Permissions.RequestPermission(Permissions.EyeTracking, OnPermissionGranted, OnPermissionDenied, OnPermissionDenied);
 
-        SetShown(launcher == null || !launcher.IsSessionRunning);
+        SetShown(CanShow);
     }
+
+    // Idle only, and not while the world is being re-placed.
+    private bool CanShow =>
+        (launcher == null || !launcher.IsSessionRunning) && (placement == null || !placement.IsPlacing);
 
     void OnEnable()
     {
@@ -171,6 +195,8 @@ public class GazeStartTarget : MonoBehaviour
             launcher.OnSessionStarted += HandleSessionStarted;
             launcher.OnSessionEnded += HandleSessionEnded;
         }
+        if (placement != null)
+            placement.OnPlacingChanged += HandlePlacingChanged;
     }
 
     void OnDisable()
@@ -180,6 +206,8 @@ public class GazeStartTarget : MonoBehaviour
             launcher.OnSessionStarted -= HandleSessionStarted;
             launcher.OnSessionEnded -= HandleSessionEnded;
         }
+        if (placement != null)
+            placement.OnPlacingChanged -= HandlePlacingChanged;
     }
 
     void Update()
@@ -201,24 +229,49 @@ public class GazeStartTarget : MonoBehaviour
         if (ringFill != null)
             ringFill.fillAmount = _progress;
 
-        if (_progress >= 1f && launcher != null)
+        if (_progress >= 1f)
         {
-            Debug.Log("[GazeStartTarget] Dwell complete — starting session.");
-            // One attempt per full ring: if the start doesn't happen (launcher disabled), the
-            // goalie has to dwell again instead of this retrying every frame.
+            // One attempt per full ring: if the action doesn't happen (launcher disabled, recenter
+            // refused), the goalie has to dwell again instead of this retrying every frame.
             _progress = 0f;
-            launcher.TryStartSession(); // OnSessionStarted hides the target
+
+            if (action == TargetAction.Recenter)
+            {
+                if (placement != null)
+                {
+                    Debug.Log("[GazeStartTarget] Dwell complete — recentering.");
+                    placement.Recenter(); // OnPlacingChanged hides the target
+                }
+            }
+            else if (launcher != null)
+            {
+                Debug.Log("[GazeStartTarget] Dwell complete — starting session.");
+                launcher.TryStartSession(); // OnSessionStarted hides the target
+            }
         }
     }
 
-    // ── Session events ────────────────────────────────────────────
+    // ── Session / placement events ────────────────────────────────
 
     void HandleSessionStarted() => SetShown(false);
 
     void HandleSessionEnded()
     {
         _rearmUntil = Time.time + rearmDelay;
-        SetShown(true);
+        SetShown(CanShow); // stays hidden if a re-place starts right after the session
+    }
+
+    void HandlePlacingChanged(bool placing)
+    {
+        if (placing)
+        {
+            SetShown(false);
+            return;
+        }
+
+        // Same protection as after a session: a short delay and a fresh look.
+        _rearmUntil = Time.time + rearmDelay;
+        SetShown(CanShow);
     }
 
     private void SetShown(bool shown)
