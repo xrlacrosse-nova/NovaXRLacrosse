@@ -1309,7 +1309,7 @@ MonoBehaviour:
   fillColor: {r: 1, g: 0, b: 0, a: 1}
   showTrack: 1
   trackColor: {r: 1, g: 1, b: 1, a: 0.25}
-  dwellSeconds: 3
+  dwellSeconds: 10
   drainSpeedMultiplier: 2
   rearmDelay: 2
   gazeCamera: {fileID: 0}
