@@ -69,6 +69,7 @@ public class ShotPathRecorder : MonoBehaviour
     private readonly List<Vector3> _current = new List<Vector3>();
     private bool _recording = false;
     private bool _pathsShown = false;
+    private bool _showAfterWarmUp = false; // the last session's paths were up when a warm-up started
 
     // ── Public API ────────────────────────────────────────────────
 
@@ -142,6 +143,9 @@ public class ShotPathRecorder : MonoBehaviour
 
     private void HandleShotLaunched()
     {
+        // Warm-up shots aren't recorded; with _recording off, the other handlers skip them too.
+        if (_launcher != null && _launcher.IsWarmUp) return;
+
         // A shot that never ended (e.g. relaunched mid-flight) is dropped rather than kept half-done.
         AbandonOpenPath("a new shot was launched");
         _recording = true;
@@ -292,13 +296,33 @@ public class ShotPathRecorder : MonoBehaviour
         return QuadrantMath.BucketFromNormalized(normalized);
     }
 
+    /// <summary>A warm-up keeps the last session's paths but hides them (closing any replay,
+    /// as a normal start does); they come back when it ends.</summary>
     private void HandleSessionStarted()
     {
+        if (_launcher.IsWarmUp)
+        {
+            AbandonOpenPath("a warm-up started");
+            _showAfterWarmUp = _pathsShown;
+            _pathsShown = false;
+            OnPathsCleared?.Invoke();
+            return;
+        }
+
+        _showAfterWarmUp = false;
         ClearPaths();
     }
 
     private void HandleSessionEnded()
     {
+        if (_launcher.IsWarmUp)
+        {
+            if (_showAfterWarmUp)
+                ShowPaths();
+            _showAfterWarmUp = false;
+            return;
+        }
+
         // Covers the last shot when RandomLauncher's despawn handler (which ends the session)
         // runs before HandleDespawned.
         AbandonOpenPath("the session ended before the shot finished");
