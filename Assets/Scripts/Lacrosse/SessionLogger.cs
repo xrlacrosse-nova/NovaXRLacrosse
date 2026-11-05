@@ -234,19 +234,13 @@ public class SessionLogger : MonoBehaviour
 
     /// <summary>Pairs ShotPathRecorder's paths with the saved shots in order. Read once here at
     /// session end, so it doesn't matter which OnSaved / OnPlaneCrossed subscriber ran first.
-    /// The recorder keeps off-gate crossings as Miss paths; those have no saved shot and are
-    /// skipped. If the rest still don't line up, the session is saved without paths rather
-    /// than with the wrong ones.</summary>
+    /// If they don't line up, the session is saved without paths rather than with the wrong
+    /// ones.</summary>
     private void AttachPaths(SessionRecord session)
     {
         if (_pathRecorder == null) return;
 
-        var paths = new List<ShotPathRecorder.ShotPath>();
-        foreach (ShotPathRecorder.ShotPath path in _pathRecorder.Paths)
-        {
-            if (path.outcome != ShotPathRecorder.PathOutcome.Miss)
-                paths.Add(path);
-        }
+        var paths = new List<ShotPathRecorder.ShotPath>(_pathRecorder.Paths);
 
         if (paths.Count != session.shots.Count)
         {

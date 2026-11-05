@@ -14,7 +14,7 @@ using UnityEngine;
 /// only shown/cleared manually via ShowPaths()/ClearPaths().
 ///
 /// Each path runs from the launch point to where the shot ended: the gate-plane crossing for a
-/// goal or miss (the same point as that shot's heatmap dot), or the stick for a save. A save also
+/// goal (the same point as that shot's heatmap dot), or the stick for a save. A save also
 /// stores a separate projected tail from the stick to the gate plane. Nothing after the end is
 /// recorded (the project has no bounce shots). A shot that never ends that way (e.g. it deflects
 /// off the goalie's body and despawns) is dropped with a warning, so a session can show fewer
@@ -23,7 +23,7 @@ using UnityEngine;
 [RequireComponent(typeof(GoalDetector))]
 public class ShotPathRecorder : MonoBehaviour
 {
-    public enum PathOutcome { Save, Goal, Miss }
+    public enum PathOutcome { Save, Goal }
 
     public struct ShotPath
     {
@@ -155,8 +155,16 @@ public class ShotPathRecorder : MonoBehaviour
         if (!_recording) return;
 
         // GoalScored is set before OnPlaneCrossed fires, so it reflects this exact crossing.
-        PathOutcome outcome = _goalDetector.GoalScored ? PathOutcome.Goal : PathOutcome.Miss;
-        FinishPath(crossingPos, Array.Empty<Vector3>(), crossingPos, outcome);
+        // Every shot is aimed inside the cage, so a crossing outside it is a bug, not a miss:
+        // drop the path, same as ShotHeatmapRecorder and SessionLogger drop the shot.
+        if (!_goalDetector.GoalScored)
+        {
+            AbandonOpenPath($"the ball crossed the goal plane outside the gate at " +
+                            $"({crossingPos.x:F3}, {crossingPos.y:F3})");
+            return;
+        }
+
+        FinishPath(crossingPos, Array.Empty<Vector3>(), crossingPos, PathOutcome.Goal);
     }
 
     /// <summary>OnSaved and OnPlaneCrossed are mutually exclusive per shot, so each path is

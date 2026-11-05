@@ -20,4 +20,11 @@ public struct RecordedShot
         this.scored = scored;
         this.session = session;
     }
+
+    /// <summary>A saved shot as a heatmap dot. Used by both single-session replay and the
+    /// Lifetime heatmap, so they always plot a shot the same way.</summary>
+    public static RecordedShot From(ShotRecord shot, int session)
+    {
+        return new RecordedShot(shot.resultNormalized, shot.outcome == ShotRecord.Goal, session);
+    }
 }

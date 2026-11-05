@@ -261,7 +261,7 @@ public class SessionHistory : MonoBehaviour
 
         var shots = new List<RecordedShot>(session.shots.Count);
         foreach (ShotRecord shot in session.shots)
-            shots.Add(new RecordedShot(shot.resultNormalized, shot.outcome == ShotRecord.Goal, 0));
+            shots.Add(RecordedShot.From(shot, 0));
 
         if (heatmap != null)
             heatmap.ShowSession(shots, LevelName(session.settings != null ? session.settings.difficulty : ""));
@@ -371,7 +371,7 @@ public class SessionHistory : MonoBehaviour
             if (session == null) continue;
 
             foreach (ShotRecord shot in session.shots)
-                shots.Add(new RecordedShot(shot.resultNormalized, shot.outcome == ShotRecord.Goal, sessionIndex));
+                shots.Add(RecordedShot.From(shot, sessionIndex));
             sessionIndex++;
         }
 
