@@ -99,6 +99,8 @@ public class SettingsPage : MonoBehaviour
     private readonly List<(Difficulty difficulty, RayButton button)> _difficultyRows =
         new List<(Difficulty, RayButton)>();
     private TextMeshProUGUI _difficultyMessage;
+    private RayButton _warmUpButton;
+    private TextMeshProUGUI _warmUpMessage;
 
     // player column (only with a PlayerProfileStore)
     private RectTransform _playerRows;          // rebuilt when the list changes or scrolls
@@ -188,6 +190,7 @@ public class SettingsPage : MonoBehaviour
         SetShown(launcher == null || !launcher.IsSessionRunning);
         RefreshDifficultyRows();
         RefreshPlayerRows();
+        ApplyPlayerWarmUp();
     }
 
     void OnEnable()
@@ -256,6 +259,7 @@ public class SettingsPage : MonoBehaviour
         else
             RefreshPlayerRows();
         RefreshViewHistoryLabel();
+        ApplyPlayerWarmUp();
     }
 
     void HandlePlayersChanged()
@@ -650,6 +654,39 @@ public class SettingsPage : MonoBehaviour
             row.button.SetSelected(row.difficulty == difficulty.Selected);
     }
 
+    // ── Warm-up ───────────────────────────────────────────────────
+
+    /// <summary>Gives the launcher the selected player's Warm-up choice (at Start and on player
+    /// change). Without a PlayerProfileStore the launcher's own value is used, not remembered.</summary>
+    private void ApplyPlayerWarmUp()
+    {
+        if (launcher != null && players != null)
+            launcher.warmUpEnabled = players.CurrentPlayer.warmUp;
+        RefreshWarmUpRow();
+    }
+
+    /// <summary>Row click: flips Warm-up On / Off and saves it on the player. Refused
+    /// mid-session (the page is hidden then anyway).</summary>
+    private void ToggleWarmUp()
+    {
+        bool next = !launcher.warmUpEnabled;
+        bool changed = !launcher.IsSessionRunning &&
+                       (players == null || players.SetPlayerWarmUp(players.CurrentPlayer, next));
+        if (changed)
+            launcher.warmUpEnabled = next;
+
+        _warmUpMessage.text = changed ? "" : "Can't change that now";
+        RefreshWarmUpRow();
+    }
+
+    private void RefreshWarmUpRow()
+    {
+        if (_warmUpButton == null || launcher == null) return;
+
+        _warmUpButton.Text = launcher.warmUpEnabled ? "Warm-up: On" : "Warm-up: Off";
+        _warmUpButton.SetSelected(launcher.warmUpEnabled);
+    }
+
     // ── Building ──────────────────────────────────────────────────
 
     /// <summary>A plate behind every page, so the board reads as one panel instead of loose
@@ -697,7 +734,8 @@ public class SettingsPage : MonoBehaviour
             CreateButton(_mainPage, "+ New player", new Vector2(gap * 2f, y), new Vector2(columnWidth, keySize),
                          OpenNewPlayer);
 
-        BuildDifficultyColumn(w / 2f + gap, columnWidth);
+        float rightY = BuildDifficultyColumn(w / 2f + gap, columnWidth);
+        BuildWarmUpRow(w / 2f + gap, rightY, columnWidth);
 
         // Bottom of the right column, level with Rename / Delete.
         if (players != null && history != null)
@@ -750,12 +788,13 @@ public class SettingsPage : MonoBehaviour
     }
 
     /// <summary>DIFFICULTY column on the right half of the Main page: one pick-one row per level.
-    /// Left out entirely when there's no DifficultySelector, so the page can ship without it.</summary>
-    private void BuildDifficultyColumn(float x, float columnWidth)
+    /// Left out entirely when there's no DifficultySelector, so the page can ship without it.
+    /// Returns the y just below it (the column's top when it's left out).</summary>
+    private float BuildDifficultyColumn(float x, float columnWidth)
     {
-        if (difficulty == null || difficulty.Levels == null) return;
-
         float y = gap * 2f;
+        if (difficulty == null || difficulty.Levels == null) return y;
+
         CreateLabel(_mainPage, "DIFFICULTY", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.4f),
                     UiPalette.Chalk, TextAlignmentOptions.Left);
         y += fontSize * 1.4f + gap;
@@ -777,6 +816,21 @@ public class SettingsPage : MonoBehaviour
         _difficultyMessage = CreateLabel(_mainPage, "", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.2f),
                                          UiPalette.Smoke, TextAlignmentOptions.Left);
         RefreshDifficultyRows();
+        return y + fontSize * 1.2f + gap;
+    }
+
+    /// <summary>[ Warm-up: On / Off ] in the right column, with its own message line. Needs a
+    /// RandomLauncher.</summary>
+    private void BuildWarmUpRow(float x, float y, float columnWidth)
+    {
+        if (launcher == null) return;
+
+        _warmUpButton = CreateButton(_mainPage, "Warm-up: Off", new Vector2(x, y), new Vector2(columnWidth, keySize),
+                                     ToggleWarmUp, dimWhenIdle: true);
+        y += keySize + gap;
+        _warmUpMessage = CreateLabel(_mainPage, "", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.2f),
+                                     UiPalette.Smoke, TextAlignmentOptions.Left);
+        RefreshWarmUpRow();
     }
 
     /// <summary>Row click. A refused change (session running, level missing) says so on the
