@@ -25,10 +25,6 @@ public static class UiPalette
     /// ghost line on an additive display.</summary>
     public static readonly Color Smoke = Hex(0x6E7A86);
 
-    /// <summary>Shots wide of the cage. Same as Smoke: a miss isn't a goalie decision, so it
-    /// stays quiet.</summary>
-    public static readonly Color Miss = Smoke;
-
     /// <summary>#FFFF00. Midpoint (50% saved) of the save-rate gradient only. A straight red →
     /// green fade passes through a dim olive that nearly vanishes on an additive display.</summary>
     public static readonly Color Mixed = Hex(0xFFFF00);
