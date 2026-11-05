@@ -113,7 +113,10 @@ public class ShotsRemainingDisplay : MonoBehaviour
     {
         if (label == null) return;
 
-        label.text = _shotsLeft == 1 ? "1 shot left" : $"{_shotsLeft} shots left";
+        if (launcher != null && launcher.IsWarmUp)
+            label.text = $"WARM-UP {_shotsLeft}";
+        else
+            label.text = _shotsLeft == 1 ? "1 shot left" : $"{_shotsLeft} shots left";
         label.enabled = true;
     }
 }

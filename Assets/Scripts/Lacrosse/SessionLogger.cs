@@ -98,6 +98,9 @@ public class SessionLogger : MonoBehaviour
         _pending = null;
         _session = null;
 
+        // A warm-up isn't saved. With no _session, every shot and end handler does nothing.
+        if (_launcher.IsWarmUp) return;
+
         PlayerProfile player = players != null ? players.CurrentPlayer : null;
         if (player == null) return;
 

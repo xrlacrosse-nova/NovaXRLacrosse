@@ -230,8 +230,12 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     // ── Recording ────────────────────────────────────────────────
 
+    private bool IsWarmUp => _launcher != null && _launcher.IsWarmUp;
+
     private void HandlePlaneCrossed(Vector3 crossingPos)
     {
+        if (IsWarmUp) return;
+
         // GoalDetector's own verdict, set before OnPlaneCrossed fires. Every shot is aimed
         // inside the cage, so a crossing outside it is a bug rather than a miss: warn and
         // leave it off the readout.
@@ -250,6 +254,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
     /// The two events are mutually exclusive per shot, so nothing is recorded twice.</summary>
     private void HandleSaved(Vector3 projectedPos)
     {
+        if (IsWarmUp) return;
+
         RecordShot(projectedPos, scored: false);
     }
 
@@ -267,13 +273,30 @@ public class ShotHeatmapRecorder : MonoBehaviour
                   $"normalized=({normalized.x:F3}, {normalized.y:F3}) scored={scored}");
     }
 
+    /// <summary>A warm-up keeps the last session's shots but hides the heatmap (closing any
+    /// Lifetime view or replay, as a normal start does).</summary>
     private void HandleSessionStarted()
     {
+        if (IsWarmUp)
+        {
+            _lifetimeShots = null;
+            _replayShots = null;
+            HideDisplay();
+            return;
+        }
+
         ClearRecordedShots();
     }
 
+    /// <summary>After a warm-up, the last session's heatmap comes back as it was.</summary>
     private void HandleSessionEnded()
     {
+        if (IsWarmUp)
+        {
+            ShowLive();
+            return;
+        }
+
         CommitSession();
         ShowHeatmap();
     }
