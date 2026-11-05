@@ -6,7 +6,7 @@ using UnityEngine;
 /// Single source of truth for detecting when the lacrosse ball passes through the 2D
 /// goal gate plane. Attach to the same GameObject as the launcher and Rigidbody.
 ///
-/// Other components (e.g. BallDisappear, ball launchers) should subscribe to
+/// Other components (e.g. recorders, ball launchers) should subscribe to
 /// <see cref="OnPlaneCrossed"/> / <see cref="OnGoalScored"/> instead of re-implementing
 /// plane-crossing detection.
 ///
@@ -166,7 +166,7 @@ public class GoalDetector : MonoBehaviour
         _prevPos = currentPos;
     }
 
-    // ── public API (called by BallLauncher) ───────────────────────
+    // ── public API (called by RandomLauncher) ─────────────────────
 
     /// <summary>Call this immediately after the ball is launched.</summary>
     public void OnBallLaunched()
