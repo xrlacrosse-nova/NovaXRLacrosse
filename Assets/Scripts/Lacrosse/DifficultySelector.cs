@@ -3,9 +3,14 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Holds the difficulty the goalie picked (High school, College, Pro) and copies its values onto
-/// the RandomLauncher and CrowdAmbience. The choice is fixed: it never changes based on how the
-/// goalie does. See Plans/Current/Difficulty_Progression_Plan.md.
+/// Holds the difficulty the goalie picked (Warm-up, High school, College, Pro) and copies its
+/// values onto the RandomLauncher and CrowdAmbience. The choice is fixed: it never changes based
+/// on how the goalie does. See Plans/Current/Difficulty_Progression_Plan.md.
+///   - Warm-up is picked like any level. Its sessions aren't recorded and its shots go to the
+///     corners in a fixed order (RandomLauncher.IsWarmUp). If the scene's saved Levels list has
+///     no Warm-up entry (it was saved before Warm-up existed), one is added at the top at
+///     runtime, copied from High school with WarmUpShots shots. Add it to the list in the
+///     Inspector to tune it.
 ///   - Picked on the settings page's DIFFICULTY column (SettingsPage calls SetDifficulty), or
 ///     with this component's context menu in the Editor. No UI of its own.
 ///   - Refused while a session is running (the page is hidden then anyway).
@@ -46,6 +51,10 @@ public class DifficultySelector : MonoBehaviour
     private const string PrefsKey = "Difficulty.Selected";
 
     private bool _loaded;
+    private bool _warmUpChecked;
+
+    /// <summary>Shots in the Warm-up level added at runtime: 3 to each corner.</summary>
+    private const int WarmUpShots = 12;
 
     /// <summary>Fired after a new difficulty is applied (and once at startup).</summary>
     public event Action<Difficulty> OnDifficultyChanged;
@@ -64,7 +73,14 @@ public class DifficultySelector : MonoBehaviour
     /// <summary>The current level's display name, or "" if it isn't in the list.</summary>
     public string SelectedName => FindLevel(Selected)?.displayName ?? "";
 
-    public IReadOnlyList<DifficultyLevel> Levels => levels;
+    public IReadOnlyList<DifficultyLevel> Levels
+    {
+        get
+        {
+            EnsureWarmUpLevel();
+            return levels;
+        }
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -179,6 +195,7 @@ public class DifficultySelector : MonoBehaviour
     /// <summary>The first level with this difficulty (duplicates after it are ignored).</summary>
     public DifficultyLevel FindLevel(Difficulty difficulty)
     {
+        EnsureWarmUpLevel();
         if (levels == null) return null;
         foreach (DifficultyLevel level in levels)
         {
@@ -189,6 +206,42 @@ public class DifficultySelector : MonoBehaviour
     }
 
     // ── Private helpers ───────────────────────────────────────────
+
+    /// <summary>Once: puts a Warm-up level at the top of the list if the scene's saved list
+    /// doesn't have one, copied from High school (or the code defaults) with WarmUpShots shots.
+    /// Runtime only, so it's never saved into the scene. Called lazily, since other scripts may
+    /// read the list before this Awake runs.</summary>
+    private void EnsureWarmUpLevel()
+    {
+        if (_warmUpChecked) return;
+        _warmUpChecked = true;
+
+        if (levels == null)
+            levels = new List<DifficultyLevel>();
+        foreach (DifficultyLevel level in levels)
+        {
+            if (level != null && level.difficulty == Difficulty.WarmUp)
+                return;
+        }
+
+        DifficultyLevel source = null;
+        foreach (DifficultyLevel level in levels)
+        {
+            if (level != null && level.difficulty == Difficulty.HighSchool)
+            {
+                source = level;
+                break;
+            }
+        }
+        if (source == null)
+            source = DefaultLevels().Find(l => l.difficulty == Difficulty.HighSchool);
+
+        levels.Insert(0, new DifficultyLevel(Difficulty.WarmUp, "Warm-up", source.launchSpeed,
+                                             source.launchSpeedVariance, source.edgePadding,
+                                             source.quadrantDepth, WarmUpShots, source.crowdVolume));
+        Debug.Log("[DifficultySelector] No Warm-up in the Levels list — added one from High school " +
+                  $"({source.launchSpeed} m/s, {WarmUpShots} shots).");
+    }
 
     /// <summary>Loads the saved choice once (if Remember Selection is on and it's still in the
     /// list): the selected player's, else the shared PlayerPrefs one.</summary>
@@ -229,6 +282,7 @@ public class DifficultySelector : MonoBehaviour
 
     private DifficultyLevel FirstLevel()
     {
+        EnsureWarmUpLevel();
         if (levels == null) return null;
         foreach (DifficultyLevel level in levels)
         {
@@ -253,6 +307,9 @@ public class DifficultySelector : MonoBehaviour
 
     // ── Editor ────────────────────────────────────────────────────
 
+    [ContextMenu("Set Warm-up")]
+    private void SetWarmUp() => SetDifficulty(Difficulty.WarmUp);
+
     [ContextMenu("Set High school")]
     private void SetHighSchool() => SetDifficulty(Difficulty.HighSchool);
 
@@ -271,6 +328,7 @@ public class DifficultySelector : MonoBehaviour
         return new List<DifficultyLevel>
         {
             //                  difficulty             name           speed var  pad   depth  shots crowd
+            new DifficultyLevel(Difficulty.WarmUp,     "Warm-up",     16f, 1.0f, 0.20f, 0.50f, 12, 0.3f),
             new DifficultyLevel(Difficulty.HighSchool, "High school", 16f, 1.0f, 0.20f, 0.50f, 8,  0.3f),
             new DifficultyLevel(Difficulty.College,    "College",     21f, 1.5f, 0.08f, 0.65f, 10, 0.6f),
             new DifficultyLevel(Difficulty.Pro,        "Pro",         26f, 2.0f, 0.02f, 0.80f, 12, 1.0f),

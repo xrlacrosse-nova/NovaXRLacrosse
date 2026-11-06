@@ -161,6 +161,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     private List<RecordedShot> _lifetimeShots; // non-null while the Lifetime view is shown
     private List<RecordedShot> _replayShots;   // non-null while a saved session is replayed
     private string _replayLevel = "";          // that session's level name
+    private string _liveLevel;                 // level of the live session, set at its start; null before the first
 
     private int _nextSession = 0;    // session index stamped on the shots being recorded now
     private bool _committed = false; // _shots already added to _history
@@ -285,6 +286,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
             return;
         }
 
+        _liveLevel = _difficulty != null ? _difficulty.SelectedName : "";
         ClearRecordedShots();
     }
 
@@ -547,12 +549,12 @@ public class ShotHeatmapRecorder : MonoBehaviour
             }
         }
 
-        // The difficulty, so screenshots say what level the session was at. It can't change
-        // mid-session, so the selector's current level is the session's level. Lifetime spans
-        // many levels, so it's labelled as Lifetime instead. A replay shows its own session's level.
+        // The difficulty, so screenshots say what level the session was at. Taken at the session's
+        // start, so picking another level afterwards (Warm-up included) doesn't relabel it. Lifetime
+        // spans many levels, so it's labelled as Lifetime instead. A replay shows its own session's level.
         string level = lifetime ? "Lifetime"
                      : replay ? _replayLevel
-                     : _difficulty != null ? _difficulty.SelectedName : "";
+                     : _liveLevel ?? (_difficulty != null ? _difficulty.SelectedName : "");
 
         string Count(Quadrant q)
         {

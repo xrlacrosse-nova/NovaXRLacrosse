@@ -1,12 +1,15 @@
 using UnityEngine;
 
 /// <summary>The levels a goalie can pick on the settings page. See
-/// Plans/Current/Difficulty_Progression_Plan.md.</summary>
+/// Plans/Current/Difficulty_Progression_Plan.md. WarmUp is a level like the others, except its
+/// sessions aren't recorded and its shots go to the corners in a fixed order
+/// (RandomLauncher.IsWarmUp, Plans/Current/Look_Ahead_Gravity_Warmup_Plan.md).</summary>
 public enum Difficulty
 {
     HighSchool,
     College,
-    Pro
+    Pro,
+    WarmUp      // last so existing scene entries (saved as numbers) keep their meaning
 }
 
 /// <summary>
@@ -76,6 +79,7 @@ public class DifficultyLevel
             launcher.quadrantDepth = quadrantDepth;
             launcher.shotsPerSession = Mathf.Max(1, shotsPerSession);
             launcher.readyLabel = displayName;
+            launcher.WarmUpSelected = difficulty == Difficulty.WarmUp;
         }
 
         if (crowd != null)

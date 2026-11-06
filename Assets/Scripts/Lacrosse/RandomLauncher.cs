@@ -134,22 +134,11 @@ public class RandomLauncher : MonoBehaviour
              "Empty = plain GET READY. Set by DifficultySelector.")]
     public string readyLabel = "";
 
-    [Header("Warm-up")]
-    [Tooltip("On = START runs a warm-up instead of a real session: WarmUpShotsPerQuadrant shots to " +
-             "each quadrant in a row (top left, top right, bottom left, bottom right) at the High " +
-             "school level's speed, not recorded. Set by SettingsPage (remembered per player).")]
-    public bool warmUpEnabled = false;
-
-    [Tooltip("Warm-up shots to each quadrant, in a row.")]
-    [Min(1)]
-    public int warmUpShotsPerQuadrant = 3;
-
-    [Tooltip("Shown under GET READY in a warm-up's countdown.")]
-    public string warmUpLabel = "WARM-UP";
-
-    [Tooltip("Optional. Where the warm-up reads the High school level's settings. Leave empty to " +
-             "find the DifficultySelector in the scene. Without one, a warm-up keeps the current speed.")]
-    public DifficultySelector difficulty;
+    /// <summary>True when the Warm-up level is the one applied. Set by DifficultyLevel.ApplyTo,
+    /// so it follows the settings page's DIFFICULTY column like the speed does. A session started
+    /// with it on is a warm-up: not recorded, and its shots go to the corners in a fixed order
+    /// (WarmUpQuadrant). Speed, shot count and countdown label come from the level as usual.</summary>
+    public bool WarmUpSelected { get; set; }
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -175,19 +164,11 @@ public class RandomLauncher : MonoBehaviour
     private bool _sessionRunning = false;
     private int _shotsFiredThisSession = 0;
 
-    // warm-up: the order its shots go in, and the player's settings it puts back at the end
+    // warm-up: the order its shots go in, and whether the running session is one
     private static readonly Quadrant[] WarmUpOrder =
         { Quadrant.TopLeft, Quadrant.TopRight, Quadrant.BottomLeft, Quadrant.BottomRight };
 
-    private struct ShotSettings
-    {
-        public float launchSpeed, launchSpeedVariance, edgePadding, quadrantDepth;
-        public int shotsPerSession;
-        public string readyLabel;
-    }
-
     private bool _isWarmUp = false;
-    private ShotSettings _settingsBeforeWarmUp;
 
     // shot waiting on the shooter animation's release frame
     private bool _awaitingRelease = false;
@@ -262,9 +243,6 @@ public class RandomLauncher : MonoBehaviour
         _rb.drag = 0f;
 #endif
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
-
-        if (difficulty == null)
-            difficulty = FindFirstObjectByType<DifficultySelector>();
 
         if (useUnityGravity && Physics.gravity.sqrMagnitude < 0.001f)
         {
@@ -384,8 +362,7 @@ public class RandomLauncher : MonoBehaviour
             finally
             {
                 // After the listeners, so recorders still see IsWarmUp while they skip it.
-                if (_isWarmUp)
-                    EndWarmUp();
+                _isWarmUp = false;
             }
             return;
         }
@@ -446,9 +423,11 @@ public class RandomLauncher : MonoBehaviour
         if (_floorBoundary != null)
             _floorBoundary.Hide();
 
-        // Before OnSessionStarted: listeners read IsWarmUp and shotsPerSession then.
-        if (warmUpEnabled)
-            BeginWarmUp();
+        // Before OnSessionStarted: listeners read IsWarmUp then. Latched for the whole session
+        // (the level can't change mid-session anyway).
+        _isWarmUp = WarmUpSelected;
+        if (_isWarmUp)
+            Debug.Log($"[RandomLauncher] Warm-up: {shotsPerSession} shots at {launchSpeed} m/s.");
 
         OnSessionStarted?.Invoke();
 
@@ -696,63 +675,15 @@ public class RandomLauncher : MonoBehaviour
                   $"speed {speedText} | {angle:+0.0;-0.0}° | {flightTime:F2} s{exitText}");
     }
 
-    // ── Warm-up ───────────────────────────────────────────────────
-
-    /// <summary>Saves the player's shot settings, then switches to the High school level's
-    /// launcher values (not ApplyTo, which would also change the crowd and the level label),
-    /// 4 × WarmUpShotsPerQuadrant shots and the WARM-UP label.</summary>
-    private void BeginWarmUp()
-    {
-        _settingsBeforeWarmUp = new ShotSettings
-        {
-            launchSpeed = launchSpeed,
-            launchSpeedVariance = launchSpeedVariance,
-            edgePadding = edgePadding,
-            quadrantDepth = quadrantDepth,
-            shotsPerSession = shotsPerSession,
-            readyLabel = readyLabel,
-        };
-
-        DifficultyLevel level = difficulty != null ? difficulty.FindLevel(Difficulty.HighSchool) : null;
-        if (level != null)
-        {
-            launchSpeed = level.launchSpeed;
-            launchSpeedVariance = level.launchSpeedVariance;
-            edgePadding = level.edgePadding;
-            quadrantDepth = level.quadrantDepth;
-        }
-        else
-        {
-            Debug.LogWarning("[RandomLauncher] No High school level found (no DifficultySelector, or it's " +
-                             "not in the Levels list) — the warm-up uses the current speed.");
-        }
-
-        shotsPerSession = WarmUpOrder.Length * Mathf.Max(1, warmUpShotsPerQuadrant);
-        readyLabel = warmUpLabel;
-        _isWarmUp = true;
-        Debug.Log($"[RandomLauncher] Warm-up: {shotsPerSession} shots at {launchSpeed} m/s.");
-    }
-
-    /// <summary>Puts the player's own settings back.</summary>
-    private void EndWarmUp()
-    {
-        launchSpeed = _settingsBeforeWarmUp.launchSpeed;
-        launchSpeedVariance = _settingsBeforeWarmUp.launchSpeedVariance;
-        edgePadding = _settingsBeforeWarmUp.edgePadding;
-        quadrantDepth = _settingsBeforeWarmUp.quadrantDepth;
-        shotsPerSession = _settingsBeforeWarmUp.shotsPerSession;
-        readyLabel = _settingsBeforeWarmUp.readyLabel;
-        _isWarmUp = false;
-    }
-
     // ── Private helpers ───────────────────────────────────────────
 
     /// <summary>The quadrant warm-up shot <paramref name="shotNumber"/> (1 = first) goes to:
-    /// WarmUpShotsPerQuadrant to each, top left first. ShotsRemainingDisplay shows it before
-    /// the shot, so this must stay the order PickSessionQuadrant fires in.</summary>
+    /// the session's shots split evenly over the corners in a row, top left first (12 shots =
+    /// 3 each). ShotsRemainingDisplay shows it before the shot, so this must stay the order
+    /// PickSessionQuadrant fires in.</summary>
     public Quadrant WarmUpQuadrant(int shotNumber)
     {
-        int index = (shotNumber - 1) / Mathf.Max(1, warmUpShotsPerQuadrant);
+        int index = (shotNumber - 1) * WarmUpOrder.Length / Mathf.Max(1, shotsPerSession);
         return WarmUpOrder[Mathf.Clamp(index, 0, WarmUpOrder.Length - 1)];
     }
 

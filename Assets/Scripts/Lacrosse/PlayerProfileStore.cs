@@ -11,8 +11,7 @@ public class PlayerProfile
     public string id;
     public string displayName;      // 1–12 chars, letters, digits and spaces
     public string createdUtc;
-    public string difficulty;       // last chosen Difficulty enum name, "" until they pick one
-    public bool warmUp;             // Warm-up On on the settings page (false in older files)
+    public string difficulty;       // last chosen Difficulty enum name (WarmUp too), "" until they pick one
 }
 
 /// <summary>profiles.json: every player and the one selected last.</summary>
@@ -209,20 +208,6 @@ public class PlayerProfileStore : MonoBehaviour
         if (player.difficulty == difficulty) return true;
 
         player.difficulty = difficulty;
-        Save();
-        return true;
-    }
-
-    /// <summary>Saves <paramref name="player"/>'s Warm-up On / Off, for SettingsPage. Not a list
-    /// change, so no event fires. Returns false while a session is running.</summary>
-    public bool SetPlayerWarmUp(PlayerProfile player, bool warmUp)
-    {
-        EnsureLoaded();
-        if (!CanChange("change a player's warm-up")) return false;
-        if (player == null || !_list.players.Contains(player)) return false;
-        if (player.warmUp == warmUp) return true;
-
-        player.warmUp = warmUp;
         Save();
         return true;
     }
