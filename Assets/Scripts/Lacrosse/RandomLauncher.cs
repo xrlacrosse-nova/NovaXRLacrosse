@@ -747,15 +747,23 @@ public class RandomLauncher : MonoBehaviour
 
     // ── Private helpers ───────────────────────────────────────────
 
+    /// <summary>The quadrant warm-up shot <paramref name="shotNumber"/> (1 = first) goes to:
+    /// WarmUpShotsPerQuadrant to each, top left first. ShotsRemainingDisplay shows it before
+    /// the shot, so this must stay the order PickSessionQuadrant fires in.</summary>
+    public Quadrant WarmUpQuadrant(int shotNumber)
+    {
+        int index = (shotNumber - 1) / Mathf.Max(1, warmUpShotsPerQuadrant);
+        return WarmUpOrder[Mathf.Clamp(index, 0, WarmUpOrder.Length - 1)];
+    }
+
     /// <summary>A session shot's quadrant: random, or in a warm-up the fixed order
-    /// (WarmUpShotsPerQuadrant to each, top left first). Call after _shotsFiredThisSession++.</summary>
+    /// (WarmUpQuadrant). Call after _shotsFiredThisSession++.</summary>
     private Quadrant PickSessionQuadrant()
     {
         if (!_isWarmUp)
             return PickRandomQuadrant();
 
-        int index = (_shotsFiredThisSession - 1) / Mathf.Max(1, warmUpShotsPerQuadrant);
-        Quadrant quadrant = WarmUpOrder[Mathf.Clamp(index, 0, WarmUpOrder.Length - 1)];
+        Quadrant quadrant = WarmUpQuadrant(_shotsFiredThisSession);
         Debug.Log($"[RandomLauncher] Warm-up shot {_shotsFiredThisSession}: aiming at quadrant: {quadrant}");
         return quadrant;
     }

@@ -114,7 +114,15 @@ public class ShotsRemainingDisplay : MonoBehaviour
         if (label == null) return;
 
         if (launcher != null && launcher.IsWarmUp)
-            label.text = $"WARM-UP {_shotsLeft}";
+        {
+            // The warm-up's order is fixed, so the corner of the shot in progress / coming next
+            // can be named: a warm-up is for learning the corners, not reacting to surprise.
+            int shotNumber = launcher.shotsPerSession - _shotsLeft + 1;
+            string corner = _shotsLeft > 0
+                ? $"\n<size=70%>{ShotHeatmapRecorder.PositionName(launcher.WarmUpQuadrant(shotNumber))}</size>"
+                : "";
+            label.text = $"WARM-UP {_shotsLeft}{corner}";
+        }
         else
             label.text = _shotsLeft == 1 ? "1 shot left" : $"{_shotsLeft} shots left";
         label.enabled = true;
