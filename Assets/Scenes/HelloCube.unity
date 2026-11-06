@@ -2287,7 +2287,7 @@ MonoBehaviour:
   shooterAnimation: {fileID: 229782168}
   countdownText: {fileID: 1065477489}
   readyLabel: 
-  warmUpEnabled: 0
+  warmUpEnabled: 1
   warmUpShotsPerQuadrant: 3
   warmUpLabel: WARM-UP
   difficulty: {fileID: 0}
@@ -3333,8 +3333,8 @@ MonoBehaviour:
   originChangeCooldown: 3
   menuHoldRecenter: 1
   menuHoldSeconds: 1
-  lookDownPrompt: Look down at the floor
-  lookAheadPrompt: Look Straight Ahead
+  lookDownPrompt: Please look down at the floor
+  lookAheadPrompt: Please look Straight Ahead
   readyPrompt: Ready
   floorNotFoundPrompt: Floor not found. Look at the floor.
   repromptSeconds: 8
