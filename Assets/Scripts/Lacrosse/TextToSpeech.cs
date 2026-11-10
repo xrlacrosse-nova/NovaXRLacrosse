@@ -51,6 +51,7 @@ public class TextToSpeech : MonoBehaviour
     // ── Private ───────────────────────────────────────────────────
 
     private string _pendingText;  // asked for before the engine was ready
+    private float _pendingRate = 1f;
     private float _speakStartTime;
     private bool _failed;         // no engine; lines are only logged
 
@@ -163,7 +164,13 @@ public class TextToSpeech : MonoBehaviour
     /// <summary>
     /// Says <paramref name="text"/>, cutting off anything already being said.
     /// </summary>
-    public void Speak(string text)
+    public void Speak(string text) => Speak(text, speechRate);
+
+    /// <summary>
+    /// Says <paramref name="text"/> at <paramref name="rate"/> (1 = normal), cutting off anything
+    /// already being said. Only this line uses the rate; the next Speak(text) is back at speechRate.
+    /// </summary>
+    public void Speak(string text, float rate)
     {
         if (string.IsNullOrEmpty(text))
             return;
@@ -177,6 +184,7 @@ public class TextToSpeech : MonoBehaviour
         if (!IsReady)
         {
             _pendingText = text;
+            _pendingRate = rate;
             return;
         }
 
@@ -188,7 +196,7 @@ public class TextToSpeech : MonoBehaviour
         _sawAudio = false;
         try
         {
-            _tts.Call<int>("setSpeechRate", speechRate);
+            _tts.Call<int>("setSpeechRate", rate);
             using (var parameters = new AndroidJavaObject("android.os.Bundle"))
             {
                 int result = _tts.Call<int>("speak", text, QueueFlush, parameters,
@@ -206,7 +214,7 @@ public class TextToSpeech : MonoBehaviour
             FinishSpeaking();
         }
 #else
-        _editorDuration = Mathf.Max(0.5f, text.Length / Mathf.Max(1f, editorCharsPerSecond));
+        _editorDuration = Mathf.Max(0.5f, text.Length / Mathf.Max(1f, editorCharsPerSecond * Mathf.Max(0.1f, rate)));
 #endif
     }
 
@@ -263,7 +271,7 @@ public class TextToSpeech : MonoBehaviour
         {
             string text = _pendingText;
             _pendingText = null;
-            Speak(text);
+            Speak(text, _pendingRate);
         }
     }
 #endif

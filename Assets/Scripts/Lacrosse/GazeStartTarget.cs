@@ -28,7 +28,7 @@ using UnityEngine.XR.OpenXR.Features.Interactions;
 /// keep listening for session events). Ring Fill is an Image with Image Type = Filled, Radial 360.
 ///
 /// Action = Recenter makes the same target a RECENTER button: a full ring calls
-/// WorldPlacement.Recenter() instead of starting a session (Plans/Current/World_Recenter_Plan.md).
+/// WorldPlacement.Recenter() instead of starting a session (Current_Plan/Setup_And_Recenter_UX_Plan.md).
 /// Every target, START or RECENTER, also hides while WorldPlacement is re-placing the world.
 /// </summary>
 public class GazeStartTarget : MonoBehaviour

@@ -235,6 +235,7 @@ public class RandomLauncher : MonoBehaviour
         _floorBoundary = GetComponent<FloorBoundary>();
         _ballFlight = GetComponent<BallFlight>();
         _ballRenderer = GetComponent<Renderer>();
+        _placement = FindFirstObjectByType<WorldPlacement>();
 
         // The ballistic aim assumes no damping (BallFlight adds real drag itself). Interpolation smooths the arc between physics steps.
 #if UNITY_6000_0_OR_NEWER
@@ -406,12 +407,20 @@ public class RandomLauncher : MonoBehaviour
     /// <summary>Starts a new session (pre-start countdown, then ShotsPerSession shots) if one
     /// isn't already running. Safe to call from any start source (GazeStartTarget, Space in the
     /// Editor). The controller trigger no longer starts a session: it only clicks the settings
-    /// page, so a stray pull can't start one before the goalie is ready.</summary>
+    /// page, so a stray pull can't start one before the goalie is ready. Refused while
+    /// WorldPlacement is placing the world (Setup_And_Recenter_UX_Plan.md, R5).</summary>
     public void TryStartSession()
     {
         if (_sessionRunning) return;
+        if (_placement != null && _placement.IsPlacing)
+        {
+            Debug.Log("[RandomLauncher] Session start refused: world setup is running.");
+            return;
+        }
         StartCoroutine(RunSession());
     }
+
+    private WorldPlacement _placement; // found in Awake; null = no setup to wait for
 
     private IEnumerator RunSession()
     {
