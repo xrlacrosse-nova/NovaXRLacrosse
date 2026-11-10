@@ -356,15 +356,9 @@ public class RandomLauncher : MonoBehaviour
             _sessionRunning = false;
             Debug.Log($"[RandomLauncher] {(_isWarmUp ? "Warm-up" : "Session")} complete " +
                       $"({shotsPerSession} shots fired).");
-            try
-            {
-                OnSessionEnded?.Invoke();
-            }
-            finally
-            {
-                // After the listeners, so recorders still see IsWarmUp while they skip it.
-                _isWarmUp = false;
-            }
+            RaiseGuarded(OnSessionEnded, nameof(OnSessionEnded));
+            // After the listeners, so recorders still see IsWarmUp while they skip it.
+            _isWarmUp = false;
             return;
         }
 
@@ -422,6 +416,29 @@ public class RandomLauncher : MonoBehaviour
 
     private WorldPlacement _placement; // found in Awake; null = no setup to wait for
 
+    /// <summary>Calls each listener of a session event in its own try/catch, so one that throws
+    /// can't stop the others or leave the session state stuck (Session_Robustness_Plan.md, P1).
+    /// Failures are logged with the listener's name.</summary>
+    private void RaiseGuarded(System.Action evt, string eventName)
+    {
+        if (evt == null) return;
+
+        foreach (System.Delegate listener in evt.GetInvocationList())
+        {
+            try
+            {
+                ((System.Action)listener)();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[RandomLauncher] A {eventName} listener threw " +
+                               $"({listener.Method.DeclaringType?.Name}.{listener.Method.Name}); " +
+                               "the other listeners still ran.", this);
+                Debug.LogException(e, this);
+            }
+        }
+    }
+
     private IEnumerator RunSession()
     {
         _sessionRunning = true;
@@ -438,7 +455,9 @@ public class RandomLauncher : MonoBehaviour
         if (_isWarmUp)
             Debug.Log($"[RandomLauncher] Warm-up: {shotsPerSession} shots at {launchSpeed} m/s.");
 
-        OnSessionStarted?.Invoke();
+        // Guarded: a throwing listener used to kill this coroutine with _sessionRunning still
+        // true, refusing every later start until the app restarted.
+        RaiseGuarded(OnSessionStarted, nameof(OnSessionStarted));
 
         if (!_ballWarmedUp)
             yield return StartCoroutine(WarmUpBall());
