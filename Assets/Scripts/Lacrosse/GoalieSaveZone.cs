@@ -351,8 +351,14 @@ public class GoalieSaveZone : MonoBehaviour
 
         // Prefer the exact touch point from this step's path. The ball's end-of-step position
         // can already be past the stick, or past the goal plane even though the touch wasn't.
-        if (useSweepCheck && _hasPrevBallPos && CheckStepForSave(pos, "touch"))
+        // The sweep ends at this exact overlap with at least the ball's radius, so it always
+        // finds the touch; if it still returns false, GoalDetector refused the save (touch past
+        // the goal plane), and falling back to another point could wrongly overturn that.
+        if (useSweepCheck && _hasPrevBallPos)
+        {
+            CheckStepForSave(pos, "touch");
             return;
+        }
 
         // No path to check (sweep off, or the first step of the shot): use the point on the head
         // nearest the ball, which is where they're touching.
