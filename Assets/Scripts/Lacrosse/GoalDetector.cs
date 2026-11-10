@@ -55,6 +55,7 @@ public class GoalDetector : MonoBehaviour
     private bool _resolved = false; // the shot has ended: goal, miss, or save
     private float _displayTimer = 0f;
     private Vector3 _prevPos;       // ball's physics position at the last FixedUpdate
+    private float _launchSide;      // +1 / -1: which side of the gate plane (in z) the shot started on
 
     // what the popup currently says (set when a goal or save happens)
     private string _popupText = "GOAL!";
@@ -190,6 +191,9 @@ public class GoalDetector : MonoBehaviour
         _saved = false;
         _resolved = false;
         _prevPos = BallPosition;
+        // Not Mathf.Sign: it returns 1 for 0, and a launch exactly on the plane has no side.
+        float fromPlane = _prevPos.z - goalGateCenter.z;
+        _launchSide = fromPlane > 0f ? 1f : fromPlane < 0f ? -1f : 0f;
 
         OnShotLaunched?.Invoke();
     }
@@ -208,7 +212,9 @@ public class GoalDetector : MonoBehaviour
     /// Registers the current shot as saved. Called by GoalieSaveZone when the goalie's stick
     /// touches the ball. Returns false, with no side effects, unless a shot is in flight and
     /// hasn't already ended — so touching the idle ball, or the ball after it crossed the
-    /// gate plane, does nothing, and repeated touches on one shot count once.
+    /// gate plane, does nothing, and repeated touches on one shot count once. A touch already
+    /// past the gate plane (the stick reaching back into the net) is refused too: that ball
+    /// was a goal, and the next plane check records it.
     /// </summary>
     /// <param name="contactPos">World position of the ball at the touch.</param>
     /// <param name="ballVelocity">The ball's velocity at the touch, used to project where
@@ -216,6 +222,13 @@ public class GoalDetector : MonoBehaviour
     public bool TryRegisterSave(Vector3 contactPos, Vector3 ballVelocity)
     {
         if (!ShotInFlight) return false;
+
+        if (IsPastGatePlane(contactPos))
+        {
+            Debug.Log($"[GoalDetector] Save refused — touch at z {contactPos.z:F2} is past the goal plane " +
+                      $"(z {goalGateCenter.z:F2})");
+            return false;
+        }
 
         _saved = true;
         _resolved = true;
@@ -237,6 +250,14 @@ public class GoalDetector : MonoBehaviour
 
         OnSaved?.Invoke(projected);
         return true;
+    }
+
+    /// <summary>True if the point is on the far side of the gate plane from where the shot was
+    /// launched. A point exactly on the plane still counts as in front of it.</summary>
+    private bool IsPastGatePlane(Vector3 point)
+    {
+        if (_launchSide == 0f) return false;  // launched on the plane itself: no side to judge by
+        return (point.z - goalGateCenter.z) * _launchSide < 0f;
     }
 
     /// <summary>Extends the ball's path from the touch point to the gate plane. Under Unity
