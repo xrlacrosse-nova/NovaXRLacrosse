@@ -43,6 +43,11 @@ public class GoalieSaveZone : MonoBehaviour
     [Range(0f, 0.05f)]
     public float saveMargin = 0.015f;
 
+    [Tooltip("Also account for the stick moving between physics steps: the ball's path is checked " +
+             "relative to the stick, so a fast swing through the ball's path still saves. " +
+             "Leave on unless debugging.")]
+    public bool sweepStickMotion = true;
+
     [Header("Debug")]
     [Tooltip("Log each registered save (where on the head it hit), and on each goal how close the " +
              "ball came to the head. GoalDetector always logs its own SAVE / GOAL line.")]
@@ -64,8 +69,9 @@ public class GoalieSaveZone : MonoBehaviour
     // goal, etc., so the buffer is roomy and only hits on _zoneCollider are kept.
     private readonly RaycastHit[] _sweepHits = new RaycastHit[16];
 
-    // ball position at the previous physics step, for the sweep check
+    // ball position and stick pose at the previous physics step, for the sweep check
     private Vector3 _prevBallPos;
+    private Matrix4x4 _prevZoneWorldToLocal;
     private bool _hasPrevBallPos = false;
 
     // Closest the ball's center came to the zone this shot (debug log on a goal).
@@ -181,44 +187,87 @@ public class GoalieSaveZone : MonoBehaviour
 
         Vector3 pos = _ballRb.position;
 
-        if (_hasPrevBallPos)
-        {
-            Vector3 segment = pos - _prevBallPos;
-            float distance = segment.magnitude;
-
-            if (distance > 0.0001f)
-            {
-                // The controller is moved by its tracked pose every frame, but Unity only syncs
-                // transform changes to the physics scene at the start of a physics step, so
-                // without this the query below would test against a stale zone pose.
-                Physics.SyncTransforms();
-
-                if (showDebugLogs)
-                    TrackClosestApproach(_prevBallPos, pos);
-
-                if (SweepForContact(_prevBallPos, segment / distance, distance, out Vector3 contact, out bool startedTouching))
-                {
-                    if (TryRegister(contact, startedTouching ? "sweep (already touching)" : "sweep"))
-                        SnapBallTo(contact);
-                    return;
-                }
-            }
-        }
+        if (_hasPrevBallPos && CheckStepForSave(pos, "sweep"))
+            return;
 
         _prevBallPos = pos;
+        _prevZoneWorldToLocal = transform.worldToLocalMatrix;
         _hasPrevBallPos = true;
     }
 
-    /// <summary>Sweeps a ball-sized sphere (plus saveMargin) along the ball's path for this step
-    /// and returns where the ball's center was when it first touched the stick head. Only hits on
-    /// this zone's collider count; the sweep also finds the ball itself, the floor and the goal.
-    /// A hit at distance 0 means the sphere already overlapped the head at the start of the step
-    /// (its hit point is meaningless then), so the contact is the start position.</summary>
-    private bool SweepForContact(Vector3 start, Vector3 dir, float distance,
-                                 out Vector3 contact, out bool startedTouching)
+    /// <summary>Checks the last physics step (ball from _prevBallPos to <paramref name="pos"/>)
+    /// against the stick head and registers a save if they touched. Returns true if a save was
+    /// registered. Called from FixedUpdate, and from the trigger callback so a touch gets the
+    /// same exact contact point.</summary>
+    private bool CheckStepForSave(Vector3 pos, string how)
     {
-        int count = Physics.SphereCastNonAlloc(start, _ballRadius + saveMargin, dir, _sweepHits,
-                                               distance, ~0, QueryTriggerInteraction.Collide);
+        // The controller is moved by its tracked pose every frame, but Unity only syncs
+        // transform changes to the physics scene at the start of a physics step, so
+        // without this the queries below would test against a stale zone pose.
+        Physics.SyncTransforms();
+
+        // Where the ball started this step, as seen from the stick: its old position in the
+        // stick's old pose, carried into the stick's current pose. Sweeping from there to the
+        // ball's current position is the ball's path relative to the stick, so a stick swung
+        // through the ball's path between two steps is caught. With a still stick this is just
+        // _prevBallPos.
+        Vector3 relStart = sweepStickMotion
+            ? transform.localToWorldMatrix.MultiplyPoint3x4(_prevZoneWorldToLocal.MultiplyPoint3x4(_prevBallPos))
+            : _prevBallPos;
+
+        if (showDebugLogs)
+            TrackClosestApproach(relStart, pos);
+
+        if (!FindContact(relStart, pos, out float t, out Vector3 onStick, out bool startedTouching))
+            return false;
+
+        // The relative path isn't a real world path, so the ball's real center at the touch is
+        // found by how far along the step it happened. That's what's recorded (shot path,
+        // heatmap projection, the goal-plane check in TryRegisterSave).
+        Vector3 worldContact = Vector3.Lerp(_prevBallPos, pos, t);
+
+        if (!TryRegister(worldContact, startedTouching ? how + " (already touching)" : how))
+            return false;
+
+        // Shown against the stick where it is now, so the frozen ball sits on the head even
+        // if the stick has moved on since the touch.
+        SnapBallTo(onStick);
+        return true;
+    }
+
+    /// <summary>Finds where a ball-sized sphere (plus saveMargin) moving from start to end first
+    /// touches the stick head. <paramref name="t"/> is how far along the path (0-1) and
+    /// <paramref name="onStick"/> the ball's center there.
+    /// Two cases:
+    ///  - Already touching at the start (e.g. the stick moved onto the ball's old position):
+    ///    a sweep can't report that reliably, so it's checked first, directly.
+    ///  - Otherwise a sphere sweep. It also hits the ball itself, the floor and the goal, so only
+    ///    hits on this zone's collider count. A hit at distance 0 is the already-touching case
+    ///    again (its hit point is meaningless then).</summary>
+    private bool FindContact(Vector3 start, Vector3 end, out float t, out Vector3 onStick,
+                             out bool startedTouching)
+    {
+        float reach = _ballRadius + saveMargin;
+
+        if (_canMeasureApproach && Vector3.Distance(_zoneCollider.ClosestPoint(start), start) <= reach)
+        {
+            t = 0f;
+            onStick = start;
+            startedTouching = true;
+            return true;
+        }
+
+        t = 0f;
+        onStick = default;
+        startedTouching = false;
+
+        Vector3 segment = end - start;
+        float length = segment.magnitude;
+        if (length < 0.0001f) return false;
+
+        Vector3 dir = segment / length;
+        int count = Physics.SphereCastNonAlloc(start, reach, dir, _sweepHits,
+                                               length, ~0, QueryTriggerInteraction.Collide);
 
         float best = float.PositiveInfinity;
         for (int i = 0; i < count; i++)
@@ -227,15 +276,12 @@ public class GoalieSaveZone : MonoBehaviour
                 best = _sweepHits[i].distance;
         }
 
-        if (float.IsPositiveInfinity(best))
-        {
-            contact = default;
-            startedTouching = false;
-            return false;
-        }
+        if (float.IsPositiveInfinity(best)) return false;
 
+        best = Mathf.Max(0f, best);
+        t = best / length;
+        onStick = start + dir * best;
         startedTouching = best <= 0f;
-        contact = start + dir * Mathf.Max(0f, best);
         return true;
     }
 
@@ -294,13 +340,24 @@ public class GoalieSaveZone : MonoBehaviour
 
     private void HandleContact(Collider other)
     {
-        if (!ball.ShotInFlight) return;
+        // Unity still sends trigger callbacks to a disabled component (e.g. Start found no ball).
+        if (!enabled || _ballRb == null || !ball.ShotInFlight) return;
 
-        // Identify the ball by its GoalDetector rather than a tag/layer (the project has none),
+        // Identify the ball by its Rigidbody rather than a tag/layer (the project has none),
         // so nothing else in the scene — the shooter's stick, the floor — can register a save.
-        if (other.GetComponentInParent<GoalDetector>() != ball) return;
+        if (other.attachedRigidbody != _ballRb) return;
 
-        TryRegister(_ballRb.position, "touch");
+        Vector3 pos = _ballRb.position;
+
+        // Prefer the exact touch point from this step's path. The ball's end-of-step position
+        // can already be past the stick, or past the goal plane even though the touch wasn't.
+        if (useSweepCheck && _hasPrevBallPos && CheckStepForSave(pos, "touch"))
+            return;
+
+        // No path to check (sweep off, or the first step of the shot): use the point on the head
+        // nearest the ball, which is where they're touching.
+        Vector3 contact = _canMeasureApproach ? _zoneCollider.ClosestPoint(pos) : pos;
+        TryRegister(contact, "touch");
     }
 
     // ── Registering ───────────────────────────────────────────────
