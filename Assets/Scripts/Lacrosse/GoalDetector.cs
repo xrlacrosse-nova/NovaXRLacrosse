@@ -19,7 +19,13 @@ using UnityEngine;
 ///   TopLeft    | TopRight
 ///   -----------+-----------
 ///   BottomLeft | BottomRight
+///
+/// Timing: the plane check runs in FixedUpdate on the physics position, and GoalieSaveZone runs
+/// before this script (see the execution orders), so both judge the same finished physics step
+/// and the save always gets first look. A ball that passes through the stick head and the plane
+/// in one step is a save (Plans/Current/Save_Zone_Accuracy_Plan.md, F7).
 /// </summary>
+[DefaultExecutionOrder(-10)]
 public class GoalDetector : MonoBehaviour
 {
     // ── Inspector ─────────────────────────────────────────────────
@@ -48,7 +54,7 @@ public class GoalDetector : MonoBehaviour
     private bool _saved = false;
     private bool _resolved = false; // the shot has ended: goal, miss, or save
     private float _displayTimer = 0f;
-    private Vector3 _prevPos;       // ball position at the end of the last Update
+    private Vector3 _prevPos;       // ball's physics position at the last FixedUpdate
 
     // what the popup currently says (set when a goal or save happens)
     private string _popupText = "GOAL!";
@@ -116,14 +122,23 @@ public class GoalDetector : MonoBehaviour
             _displayTimer -= Time.deltaTime;
 
         UpdateGoalText();
+    }
 
+    /// <summary>The ball's physics position, not the interpolated transform the player sees, so
+    /// the plane check and GoalieSaveZone's sweep test exactly the same path.</summary>
+    private Vector3 BallPosition => _rb != null ? _rb.position : transform.position;
+
+    void FixedUpdate()
+    {
+        // Runs after GoalieSaveZone.FixedUpdate (execution order), so a save found in this same
+        // step has already resolved the shot and this returns here.
         if (!_active || _resolved) return;
 
-        Vector3 currentPos = transform.position;
+        Vector3 currentPos = BallPosition;
         float prevZ = _prevPos.z;
         float currentZ = currentPos.z;
 
-        // Did the ball cross the gate plane this frame?
+        // Did the ball cross the gate plane during the last physics step?
         bool crossedPlane = (prevZ > goalGateCenter.z && currentZ <= goalGateCenter.z)
                          || (prevZ < goalGateCenter.z && currentZ >= goalGateCenter.z);
 
@@ -133,9 +148,8 @@ public class GoalDetector : MonoBehaviour
             // the plane can't fire OnPlaneCrossed a second time.
             _resolved = true;
 
-            // Interpolate between the real last and current positions to find the exact
-            // crossing. (Not velocity * deltaTime: a frame can hold zero, one or several
-            // physics steps, so that guess put the point off the plane.)
+            // Interpolate between the last and current physics positions to find the exact
+            // crossing. (Not velocity * deltaTime, which put the point off the plane.)
             float t = Mathf.InverseLerp(prevZ, currentZ, goalGateCenter.z);
             Vector3 crossingPos = Vector3.Lerp(_prevPos, currentPos, t);
 
@@ -175,7 +189,7 @@ public class GoalDetector : MonoBehaviour
         _goalScored = false;
         _saved = false;
         _resolved = false;
-        _prevPos = transform.position;
+        _prevPos = BallPosition;
 
         OnShotLaunched?.Invoke();
     }
