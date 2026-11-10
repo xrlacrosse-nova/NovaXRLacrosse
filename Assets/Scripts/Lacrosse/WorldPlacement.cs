@@ -1,44 +1,42 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using MagicLeap.Android;
 using MagicLeap.Examples;
-using MagicLeap.OpenXR.Features.Planes;
-using MagicLeap.OpenXR.Subsystems;
 using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.XR;
-using UnityEngine.XR.ARFoundation;
-using UnityEngine.XR.ARSubsystems;
 
 /// <summary>
 /// Puts the world in the right place around the goalie instead of trusting the origin the
-/// headset picked at launch (see Plans/Current/World_Recenter_Plan.md). The headset sometimes
-/// sets its origin from a bad pose (on a table, turned away, floor not seen), and then the goal,
-/// crease and lines are all misplaced together.
+/// headset picked at launch (see Current_Plan/Setup_And_Recenter_UX_Plan.md). The headset
+/// sometimes sets its origin from a bad pose, and then the goal, crease and lines are all
+/// misplaced together.
 ///
 /// Re-placing moves only the ML Rig (this XROrigin), never WorldOrigin, so everything in the world
 /// keeps its coordinates and stays lined up with everything else:
-///   1. "Please look down at the floor": waits until the head has pitched down for LookDownSeconds, so
-///      the headset sees the floor (and floor planes can be found).
-///   2. "Please look straight ahead": waits until the head is tracked, level and still.
-///   3. Turns the rig around the head (vertical axis only) so the head faces the rig's scene
-///      forward, slides it so the head is over the rig's scene position, and, if a steady floor
-///      plane was found, sets the rig's height so that plane is the virtual floor.
-///   4. Checks the head's height above the floor; if it isn't a standing height, says
-///      "Floor not found" and goes back to step 1 (FloorRetries times). Then "Ready".
+///   1. "Please look straight ahead." (at PromptSpeechRate): waits until the head is tracked, level
+///      and still for SteadySeconds. Repeats the line every RepromptSeconds.
+///   2. Height: the rig goes back to its scene height, so the headset's own floor (Floor tracking
+///      mode) is the virtual floor.
+///   3. Launch, RECENTER and Menu hold turn the rig around the head (vertical axis only) so the head
+///      faces the rig's scene forward. Automatic re-places (tracking reset, deferred to session end)
+///      keep the current heading.
+///   4. Slides the rig so the head is over the rig's scene position.
+///   5. If the eye height is impossible (outside MinPlausibleEyeHeight..MaxPlausibleEyeHeight, e.g.
+///      floor-at-ceiling gives a negative value), sets the height to head minus FallbackEyeHeight.
+///      Logged only; no retry, nothing spoken. The bounds are wide so a crouched goalie passes.
+///   6. "Ready."
 ///
-/// When: once at startup; again when the headset moves its origin (trackingOriginUpdated) or the
-/// app resumes; from Recenter() (the RECENTER gaze target); and from holding the controller Menu
-/// button. Never during a session: a request mid-session waits until OnSessionEnded.
+/// When: once at startup; again when the headset moves its origin (trackingOriginUpdated); from
+/// Recenter() (the RECENTER gaze target); and from holding the controller Menu button. App resume
+/// does nothing. Never during a session: a request mid-session waits until OnSessionEnded, then also
+/// waits for post-session speech (the summary) to finish before its line.
 /// While re-placing, IsPlacing is true and the gaze targets (START, RECENTER) hide.
 ///
 /// The goalie spot is the rig's scene pose, saved in Awake: its position, its forward (must point
 /// at the shooter), and its height (the virtual floor).
 ///
-/// Setup: put on the ML Rig (next to XROrigin). Drag in RandomLauncher and TextToSpeech. Optional:
-/// an ARPlaneManager on the ML Rig (Horizontal) for measured floor height; without it the
-/// headset's own floor is kept and only checked.
+/// Setup: put on the ML Rig (next to XROrigin). Drag in RandomLauncher and TextToSpeech.
 /// </summary>
 public class WorldPlacement : MonoBehaviour
 {
@@ -52,14 +50,11 @@ public class WorldPlacement : MonoBehaviour
     [Tooltip("Speaks the prompts. Empty = find in scene; without one the prompts are only logged.")]
     public TextToSpeech tts;
 
-    [Tooltip("Optional. ARPlaneManager (Horizontal) on the ML Rig, used to measure the real floor.")]
-    public ARPlaneManager planeManager;
-
     [Header("When")]
     [Tooltip("Re-place once when the app starts.")]
     public bool placeOnStartup = true;
 
-    [Tooltip("Re-place when the headset moves its origin or the app resumes (headset put back on).")]
+    [Tooltip("Re-place when the headset moves its origin (e.g. after tracking loss).")]
     public bool replaceOnOriginChange = true;
 
     [Tooltip("Ignore origin-change events this many seconds after a re-place finishes.")]
@@ -73,25 +68,26 @@ public class WorldPlacement : MonoBehaviour
     public float menuHoldSeconds = 1f;
 
     [Header("Prompts")]
-    public string lookDownPrompt = "Please look down at the floor";
-    public string lookAheadPrompt = "Please look straight ahead";
-    public string readyPrompt = "Ready";
-    public string floorNotFoundPrompt = "Floor not found. Look at the floor.";
+    public string lookAheadPrompt = "Please look straight ahead.";
+    public string readyPrompt = "Ready.";
 
-    [Tooltip("Repeat a prompt if it hasn't been followed after this many seconds (e.g. the headset " +
+    [Tooltip("Speech speed for the setup lines only (1 = normal). Other speech keeps " +
+             "TextToSpeech.speechRate.")]
+    [Range(0.5f, 2f)]
+    public float promptSpeechRate = 0.8f;
+
+    [Tooltip("Repeat the prompt if it hasn't been followed after this many seconds (e.g. the headset " +
              "was on a table when it was first said).")]
     [Min(1f)]
     public float repromptSeconds = 8f;
 
+    [Tooltip("After a session ends, wait at least this long (and until speech has finished) before " +
+             "the setup line, so the session summary (spoken after its own delay) isn't cut off.")]
+    [Min(0f)]
+    public float afterSessionSpeechWait = 2f;
+
     [Header("Head checks")]
-    [Tooltip("Degrees below level that count as looking at the floor.")]
-    [Range(10f, 80f)]
-    public float lookDownPitch = 35f;
-
-    [Min(0.1f)]
-    public float lookDownSeconds = 1f;
-
-    [Tooltip("Head within this many degrees of level counts as looking at the shooter.")]
+    [Tooltip("Head within this many degrees of level counts as looking ahead.")]
     [Range(5f, 60f)]
     public float levelPitchMax = 25f;
 
@@ -102,30 +98,14 @@ public class WorldPlacement : MonoBehaviour
     [Min(0.1f)]
     public float steadySeconds = 1f;
 
-    [Header("Floor")]
-    [Tooltip("Use the ARPlaneManager's floor planes to set the height (needs Spatial Mapping permission).")]
-    public bool useFloorPlanes = true;
+    [Header("Height fallback")]
+    [Tooltip("Eye heights above the headset's floor (m) outside this range are impossible, and the " +
+             "fallback is used. Keep wide: a crouched goalie (~0.8 m) must pass.")]
+    public float minPlausibleEyeHeight = 0.4f;
+    public float maxPlausibleEyeHeight = 2.4f;
 
-    [Tooltip("Only planes Magic Leap classifies as Floor. Off = any upward horizontal plane.")]
-    public bool requireFloorClassification = true;
-
-    [Min(0.1f)]
-    public float minFloorArea = 1f;
-
-    [Tooltip("A floor plane's height must stay within Tolerance for this long before it's used.")]
-    [Min(0.1f)]
-    public float floorStableSeconds = 1f;
-
-    [Min(0.001f)]
-    public float floorStableTolerance = 0.02f;
-
-    [Tooltip("Head heights above the floor (m) that count as a standing player.")]
-    public float minEyeHeight = 0.9f;
-    public float maxEyeHeight = 2.2f;
-
-    [Tooltip("Times to retry after \"Floor not found\" before accepting the result anyway.")]
-    [Min(0)]
-    public int floorRetries = 2;
+    [Tooltip("Eye height (m) used when the headset's floor is impossible.")]
+    public float fallbackEyeHeight = 1.7f;
 
     [Header("Debug")]
     [Tooltip("Log the head and rig pose on every re-place and origin event, and every 0.5 s for " +
@@ -135,22 +115,23 @@ public class WorldPlacement : MonoBehaviour
     [Min(0f)]
     public float startupLogSeconds = 20f;
 
-    [Tooltip("Editor only: head checks always pass (each step still waits its hold time).")]
+    [Tooltip("Editor only: head checks always pass (each step still waits its hold time), and the " +
+             "height fallback is skipped.")]
     public bool editorSkipHeadChecks = true;
 
     // ── Public API ────────────────────────────────────────────────
 
-    /// <summary>True from the first prompt until "Ready" (or until a session interrupts it).</summary>
+    /// <summary>True from the start of a re-place until "Ready" (or until a session interrupts it).</summary>
     public bool IsPlacing { get; private set; }
 
     /// <summary>Fires with true when re-placing starts and false when it ends.</summary>
     public event Action<bool> OnPlacingChanged;
 
     /// <summary>
-    /// Starts a re-place with prompts. Refused (returns false) mid-session or while one is
-    /// already running.
+    /// Starts a re-place with prompts that also turns the world to face the player. Refused
+    /// (returns false) mid-session or while one is already running.
     /// </summary>
-    public bool Recenter() => Request("manual", deferIfSession: false);
+    public bool Recenter() => Request("manual", deferIfSession: false, turn: true);
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -164,19 +145,13 @@ public class WorldPlacement : MonoBehaviour
     private float _designFloorY;
 
     private bool _pending;
+    private bool _pendingTurn; // a deferred request that should turn (e.g. startup) keeps that
     private bool _aborted;
     private float _cooldownUntil;
     private Coroutine _routine;
 
     private Quaternion _prevHeadRotation;
     private float _headTurnSpeed;
-
-    private bool _planesAllowed;
-    private bool _hasCandidate;
-    private float _candidateY;
-    private float _candidateSince;
-    private bool _hasStableFloor;
-    private float _stableFloorLocalY; // relative to the rig, so moving the rig doesn't change it
 
     private MagicLeapController _controller;
     private float _nextConnectAttempt;
@@ -238,11 +213,10 @@ public class WorldPlacement : MonoBehaviour
 
     void Start()
     {
-        SetUpFloorPlanes();
         StartCoroutine(SubscribeToOriginEvents());
 
         if (placeOnStartup)
-            Request("startup", deferIfSession: true);
+            Request("startup", deferIfSession: true, turn: true);
     }
 
     void Update()
@@ -251,7 +225,6 @@ public class WorldPlacement : MonoBehaviour
         _headTurnSpeed = Quaternion.Angle(_prevHeadRotation, _head.rotation) / dt;
         _prevHeadRotation = _head.rotation;
 
-        UpdateFloorPlane();
         UpdateMenuHold();
 
         if (logPlacement && Time.realtimeSinceStartup <= startupLogSeconds && Time.time >= _nextLog)
@@ -261,18 +234,9 @@ public class WorldPlacement : MonoBehaviour
         }
     }
 
-    void OnApplicationPause(bool paused)
-    {
-        if (!paused && replaceOnOriginChange && _rig != null)
-        {
-            LogPose("app resumed");
-            Request("app resumed", deferIfSession: true);
-        }
-    }
-
     // ── Requests ──────────────────────────────────────────────────
 
-    private bool Request(string reason, bool deferIfSession)
+    private bool Request(string reason, bool deferIfSession, bool turn, bool afterSession = false)
     {
         if (!enabled) return false;
 
@@ -287,6 +251,7 @@ public class WorldPlacement : MonoBehaviour
             if (deferIfSession)
             {
                 _pending = true;
+                _pendingTurn |= turn;
                 Debug.Log($"[WorldPlacement] Re-place ({reason}) waits until the session ends.");
             }
             else
@@ -296,8 +261,8 @@ public class WorldPlacement : MonoBehaviour
             return false;
         }
 
-        Debug.Log($"[WorldPlacement] Re-place started ({reason}).");
-        _routine = StartCoroutine(PlaceRoutine());
+        Debug.Log($"[WorldPlacement] Re-place started ({reason}, {(turn ? "turns" : "keeps heading")}).");
+        _routine = StartCoroutine(PlaceRoutine(turn, afterSession));
         return true;
     }
 
@@ -306,8 +271,10 @@ public class WorldPlacement : MonoBehaviour
     private void HandleSessionEnded()
     {
         if (!_pending) return;
+        bool turn = _pendingTurn;
         _pending = false;
-        Request("after session", deferIfSession: true);
+        _pendingTurn = false;
+        Request("after session", deferIfSession: true, turn: turn, afterSession: true);
     }
 
     private void HandleOriginUpdated(XRInputSubsystem subsystem)
@@ -319,7 +286,7 @@ public class WorldPlacement : MonoBehaviour
             Debug.Log("[WorldPlacement] Origin update ignored (just re-placed).");
             return;
         }
-        Request("origin updated", deferIfSession: true);
+        Request("origin updated", deferIfSession: true, turn: false);
     }
 
     private IEnumerator SubscribeToOriginEvents()
@@ -342,49 +309,51 @@ public class WorldPlacement : MonoBehaviour
 
     // ── Re-place ──────────────────────────────────────────────────
 
-    private IEnumerator PlaceRoutine()
+    private IEnumerator PlaceRoutine(bool turn, bool afterSession)
     {
         SetPlacing(true);
         _aborted = false;
 
-        for (int attempt = 0; ; attempt++)
-        {
-            yield return WaitForHead(lookDownPrompt, IsLookingDown, lookDownSeconds);
-            if (_aborted) break;
+        if (afterSession)
+            yield return WaitForSpeechToFinish();
 
+        if (!_aborted)
             yield return WaitForHead(lookAheadPrompt, IsLookingAheadSteady, steadySeconds);
-            if (_aborted) break;
-
-            ApplyDirectionAndPosition();
-            bool measured = ApplyFloor();
-
-            float eye = EyeHeight;
-            bool plausible = (Application.isEditor && editorSkipHeadChecks) ||
-                             (eye >= minEyeHeight && eye <= maxEyeHeight);
-            LogPose($"re-placed (floor {(measured ? "measured from plane" : "headset's own")}, " +
-                    $"eye height {eye:F2} m{(plausible ? "" : ", NOT plausible")})");
-
-            if (plausible || attempt >= floorRetries)
-                break;
-
-            Say(floorNotFoundPrompt);
-            yield return new WaitForSeconds(2f);
-        }
 
         if (_aborted)
         {
             // Only a session starting stops it; finish once that session ends.
             _pending = true;
+            _pendingTurn |= turn;
             Debug.Log("[WorldPlacement] Re-place interrupted by a session; will finish after it.");
         }
         else
         {
+            Place(turn);
             Say(readyPrompt);
         }
 
         _cooldownUntil = Time.time + originChangeCooldown;
         _routine = null;
         SetPlacing(false);
+    }
+
+    /// <summary>
+    /// After a session: waits afterSessionSpeechWait (the summary starts after its own delay), then
+    /// until nothing is being spoken. Sets _aborted if a session starts.
+    /// </summary>
+    private IEnumerator WaitForSpeechToFinish()
+    {
+        float earliest = Time.time + afterSessionSpeechWait;
+        while (Time.time < earliest || (tts != null && tts.IsSpeaking))
+        {
+            if (SessionRunning)
+            {
+                _aborted = true;
+                yield break;
+            }
+            yield return null;
+        }
     }
 
     /// <summary>
@@ -425,27 +394,41 @@ public class WorldPlacement : MonoBehaviour
         }
     }
 
-    /// <summary>Turns the rig around the head so it faces the design forward, then slides it so
-    /// the head is over the design spot. Height untouched.</summary>
-    private void ApplyDirectionAndPosition()
+    /// <summary>
+    /// Resets the rig to its scene height (headset floor = virtual floor), optionally turns it
+    /// around the head to face the design forward, slides it so the head is over the design spot,
+    /// then applies the eye-height fallback if the headset's floor is impossible.
+    /// </summary>
+    private void Place(bool turn)
     {
-        Vector3 facing = Flat(_head.forward);
-        if (facing != Vector3.zero)
-            xrOrigin.RotateAroundCameraUsingOriginUp(Vector3.SignedAngle(facing, _designForward, Vector3.up));
+        Vector3 position = _rig.position;
+        position.y = _designFloorY; // undo any earlier fallback
+        _rig.position = position;
+
+        if (turn)
+        {
+            Vector3 facing = Flat(_head.forward);
+            if (facing != Vector3.zero)
+                xrOrigin.RotateAroundCameraUsingOriginUp(Vector3.SignedAngle(facing, _designForward, Vector3.up));
+        }
 
         xrOrigin.MoveCameraToWorldLocation(new Vector3(_designSpot.x, _head.position.y, _designSpot.z));
-    }
 
-    /// <summary>Sets the rig's height so the steady floor plane is the virtual floor. Uses the
-    /// plane's height relative to the rig, so applying it again gives the same result.</summary>
-    private bool ApplyFloor()
-    {
-        if (!_hasStableFloor) return false;
+        float eye = EyeHeight;
+        bool plausible = (Application.isEditor && editorSkipHeadChecks) ||
+                         (eye >= minPlausibleEyeHeight && eye <= maxPlausibleEyeHeight);
 
-        Vector3 position = _rig.position;
-        position.y = _designFloorY - _stableFloorLocalY;
-        _rig.position = position;
-        return true;
+        if (!plausible)
+        {
+            position = _rig.position;
+            position.y += _designFloorY + fallbackEyeHeight - _head.position.y;
+            _rig.position = position;
+            Debug.LogWarning($"[WorldPlacement] Headset floor impossible (eye height {eye:F2} m); " +
+                             $"using head minus {fallbackEyeHeight:F2} m.");
+        }
+
+        LogPose($"re-placed ({(turn ? "turned" : "heading kept")}, " +
+                $"floor {(plausible ? "headset's own" : "fallback")})");
     }
 
     private void SetPlacing(bool placing)
@@ -458,8 +441,6 @@ public class WorldPlacement : MonoBehaviour
     // ── Head ──────────────────────────────────────────────────────
 
     private float HeadPitch => Mathf.Asin(Mathf.Clamp(_head.forward.y, -1f, 1f)) * Mathf.Rad2Deg;
-
-    private bool IsLookingDown() => HeadPitch <= -lookDownPitch;
 
     private bool IsLookingAheadSteady() =>
         Mathf.Abs(HeadPitch) <= levelPitchMax && _headTurnSpeed <= steadyMaxDegreesPerSecond;
@@ -478,89 +459,6 @@ public class WorldPlacement : MonoBehaviour
     {
         v.y = 0f;
         return v.sqrMagnitude < 1e-6f ? Vector3.zero : v.normalized;
-    }
-
-    // ── Floor planes ──────────────────────────────────────────────
-
-    private void SetUpFloorPlanes()
-    {
-        if (!useFloorPlanes || planeManager == null) return;
-
-        // No planes in the Editor; on device, wait for the permission before scanning.
-        planeManager.enabled = false;
-        if (Application.isEditor) return;
-
-        Permissions.RequestPermission(Permissions.SpatialMapping, OnPlanesPermissionGranted,
-                                      OnPlanesPermissionDenied, OnPlanesPermissionDenied);
-    }
-
-    private void OnPlanesPermissionGranted(string permission)
-    {
-        _planesAllowed = true;
-        planeManager.enabled = true;
-    }
-
-    private void OnPlanesPermissionDenied(string permission)
-    {
-        Debug.LogWarning("[WorldPlacement] Spatial Mapping permission denied — keeping the headset's own " +
-                         "floor (checked, not measured).");
-    }
-
-    private void UpdateFloorPlane()
-    {
-        if (!_planesAllowed || planeManager == null || !planeManager.enabled) return;
-
-        // Magic Leap only returns plane classifications when asked for them (as in PlaneExample).
-        MLXrPlaneSubsystem.Query = new MLXrPlaneSubsystem.PlanesQuery
-        {
-            Flags = planeManager.requestedDetectionMode.ToMLXrQueryFlags() |
-                    MLXrPlaneSubsystem.MLPlanesQueryFlags.SemanticAll,
-            BoundsCenter = _head.position,
-            BoundsRotation = _head.rotation,
-            BoundsExtents = Vector3.one * 10f,
-            MaxResults = 50,
-            MinPlaneArea = minFloorArea
-        };
-
-        float headLocalY = _rig.InverseTransformPoint(_head.position).y;
-        bool found = false;
-        float bestArea = 0f;
-        float bestY = 0f;
-
-        foreach (ARPlane plane in planeManager.trackables)
-        {
-            if (plane.alignment != PlaneAlignment.HorizontalUp) continue;
-            if (requireFloorClassification && plane.classification != PlaneClassification.Floor) continue;
-
-            float area = plane.size.x * plane.size.y;
-            if (area < minFloorArea || area <= bestArea) continue;
-
-            float localY = _rig.InverseTransformPoint(plane.center).y;
-            float drop = headLocalY - localY;
-            if (drop < minEyeHeight || drop > maxEyeHeight) continue; // a table, or something below a platform
-
-            found = true;
-            bestArea = area;
-            bestY = localY;
-        }
-
-        if (!found)
-        {
-            _hasCandidate = false;
-            return; // keep the last steady floor
-        }
-
-        if (!_hasCandidate || Mathf.Abs(bestY - _candidateY) > floorStableTolerance)
-        {
-            _hasCandidate = true;
-            _candidateY = bestY;
-            _candidateSince = Time.time;
-        }
-        else if (Time.time - _candidateSince >= floorStableSeconds)
-        {
-            _hasStableFloor = true;
-            _stableFloorLocalY = _candidateY;
-        }
     }
 
     // ── Menu hold ─────────────────────────────────────────────────
@@ -587,7 +485,7 @@ public class WorldPlacement : MonoBehaviour
         if (Time.time - _menuHeldSince >= menuHoldSeconds)
         {
             _menuFired = true;
-            Request("menu hold", deferIfSession: false);
+            Request("menu hold", deferIfSession: false, turn: true);
         }
     }
 
@@ -616,7 +514,7 @@ public class WorldPlacement : MonoBehaviour
 
     private void Say(string text)
     {
-        if (tts != null) tts.Speak(text);
+        if (tts != null) tts.Speak(text, promptSpeechRate);
         else Debug.Log($"[WorldPlacement] (no TTS) {text}");
     }
 
@@ -626,7 +524,6 @@ public class WorldPlacement : MonoBehaviour
         Vector3 headLocal = _rig.InverseTransformPoint(_head.position);
         Debug.Log($"[WorldPlacement] {label}: mode {xrOrigin.CurrentTrackingOriginMode}, " +
                   $"eye height {EyeHeight:F2} m, head local {headLocal:F2}, head yaw {_head.eulerAngles.y:F0}, " +
-                  $"head pitch {HeadPitch:F0}, rig {_rig.position:F2} yaw {_rig.eulerAngles.y:F0}, " +
-                  $"floor plane {(_hasStableFloor ? _stableFloorLocalY.ToString("F2") : "none")}");
+                  $"head pitch {HeadPitch:F0}, rig {_rig.position:F2} yaw {_rig.eulerAngles.y:F0}");
     }
 }
