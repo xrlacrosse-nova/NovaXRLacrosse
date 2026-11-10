@@ -1245,7 +1245,7 @@ MonoBehaviour:
   visualRoot: {fileID: 108915630}
   ringFill: {fileID: 329017396}
   gazeCenter: {fileID: 0}
-  targetRadius: 0.8
+  targetRadius: 1
   fillColor: {r: 0, g: 1, b: 0, a: 1}
   showTrack: 1
   trackColor: {r: 1, g: 1, b: 1, a: 0.25}
@@ -1305,7 +1305,7 @@ MonoBehaviour:
   visualRoot: {fileID: 2015872925}
   ringFill: {fileID: 653368260}
   gazeCenter: {fileID: 0}
-  targetRadius: 0.8
+  targetRadius: 1
   fillColor: {r: 1, g: 0, b: 0, a: 1}
   showTrack: 1
   trackColor: {r: 1, g: 1, b: 1, a: 0.25}
@@ -3866,7 +3866,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1679040415}
-  m_Mesh: {fileID: 2063585266}
+  m_Mesh: {fileID: 2081599742}
 --- !u!114 &1679040420
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3881,6 +3881,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GoalieSaveZone
   ball: {fileID: 0}
   useSweepCheck: 1
+  saveMargin: 0.015
+  sweepStickMotion: 1
   showDebugLogs: 1
 --- !u!54 &1679040421
 Rigidbody:
@@ -5209,14 +5211,14 @@ MonoBehaviour:
     m_AreaError: 15
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
-  m_Mesh: {fileID: 2063585266}
+  m_Mesh: {fileID: 2081599742}
   m_VersionIndex: 4977
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
   m_SelectedVertices: 
---- !u!65 &1679040423
-BoxCollider:
+--- !u!64 &1679040423
+MeshCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
@@ -5233,9 +5235,10 @@ BoxCollider:
   m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 0.254, y: 0.05, z: 0.42}
-  m_Center: {x: 0, y: 0, z: 0.03}
+  serializedVersion: 5
+  m_Convex: 1
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 2081599742}
 --- !u!1 &1700357260
 GameObject:
   m_ObjectHideFlags: 0
@@ -5959,13 +5962,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ShotsRemainingDisplay
   launcher: {fileID: 0}
   label: {fileID: 0}
---- !u!43 &2063585266
+--- !u!43 &2081599742
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: pb_Mesh55160
+  m_Name: pb_Mesh46912
   serializedVersion: 12
   m_SubMeshes:
   - serializedVersion: 2

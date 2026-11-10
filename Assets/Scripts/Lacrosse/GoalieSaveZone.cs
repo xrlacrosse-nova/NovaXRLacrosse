@@ -7,18 +7,25 @@ using UnityEngine.InputSystem;
 /// GoalDetector (the single source of truth for shot outcomes) via TryRegisterSave(), and
 /// GoalDetector's OnSaved event drives everything else (popup, heatmap dot, despawn, next shot).
 ///
-/// Setup (all in the Unity Editor — see Plans/Saving_Plan.md for the full steps):
-///   1. Create an empty GameObject under the ML Rig's Controller, next to (NOT under) the
-///      stick visual, and fit a Collider around the stick head — a Capsule or Sphere Collider
-///      matches the current disc-shaped stick head better than a Box.
-///   2. On the Collider, tick Is Trigger.
-///   3. Add a Rigidbody: Is Kinematic on, Use Gravity off. (A moving collider without a
+/// Setup (all in the Unity Editor — see Plans/Current/Save_Zone_Accuracy_Plan.md):
+///   1. On the stick-head object under the ML Rig's Controller (currently `Cylinder`), add a
+///      MeshCollider using the oval stick-head mesh, with Convex and Is Trigger ticked, so the
+///      save area matches the visible head exactly. (Any trigger Collider works; a convex
+///      MeshCollider is the one that matches the oval.)
+///   2. Add a Rigidbody: Is Kinematic on, Use Gravity off. (A moving collider without a
 ///      Rigidbody is treated as static; the ball's own Rigidbody is what makes trigger events fire.)
-///   4. Add this component to the same GameObject. Ball can be left empty — it's auto-found.
+///   3. Add this component to the same GameObject. Ball can be left empty — it's auto-found.
 ///
-/// A save only counts while a shot is in flight, so waving the stick through the idle ball, or
-/// touching it after it has already crossed the goal plane, does nothing.
+/// How a save is found: each physics step, a sphere the size of the ball (plus saveMargin) is
+/// swept along the ball's path since the last step and tested against this collider, so a ball
+/// that only clips the rim still counts and a fast ball can't skip through. A saved ball is moved
+/// back to where it touched the head, so it freezes on the stick, not behind it.
+///
+/// Runs before GoalDetector (execution order), so in a step where the ball passes through the
+/// head and the goal plane, the save wins. A save only counts while a shot is in flight, so
+/// waving the stick through the idle ball does nothing.
 /// </summary>
+[DefaultExecutionOrder(-20)]
 public class GoalieSaveZone : MonoBehaviour
 {
     [Header("Ball")]
@@ -31,18 +38,45 @@ public class GoalieSaveZone : MonoBehaviour
              "physics steps is also checked against the zone. Leave on unless debugging.")]
     public bool useSweepCheck = true;
 
+    [Tooltip("Extra reach added around the stick head, in meters, on top of the ball's own radius. " +
+             "A little generosity so a ball that visibly grazes the rim counts. 0 = exact.")]
+    [Range(0f, 0.05f)]
+    public float saveMargin = 0.015f;
+
+    [Tooltip("Also account for the stick moving between physics steps: the ball's path is checked " +
+             "relative to the stick, so a fast swing through the ball's path still saves. " +
+             "Leave on unless debugging.")]
+    public bool sweepStickMotion = true;
+
     [Header("Debug")]
-    [Tooltip("Log each registered save. GoalDetector always logs its own SAVE line.")]
+    [Tooltip("Log each registered save (where on the head it hit), and on each goal how close the " +
+             "ball came to the head. GoalDetector always logs its own SAVE / GOAL line.")]
     public bool showDebugLogs = true;
 
     // ── Private ───────────────────────────────────────────────────
 
+    // Used if the ball has no SphereCollider to read its size from (6.35 cm lacrosse ball).
+    private const float DefaultBallRadius = 0.032f;
+
+    // Points sampled along each step's path for the closest-approach log (debug only).
+    private const int ApproachSamples = 12;
+
     private Collider _zoneCollider;
     private Rigidbody _ballRb;
+    private float _ballRadius = DefaultBallRadius;
 
-    // ball position at the previous physics step, for the sweep check
+    // Hits from the sphere sweep. The sweep also returns the ball's own collider, the floor, the
+    // goal, etc., so the buffer is roomy and only hits on _zoneCollider are kept.
+    private readonly RaycastHit[] _sweepHits = new RaycastHit[16];
+
+    // ball position and stick pose at the previous physics step, for the sweep check
     private Vector3 _prevBallPos;
+    private Matrix4x4 _prevZoneWorldToLocal;
     private bool _hasPrevBallPos = false;
+
+    // Closest the ball's center came to the zone this shot (debug log on a goal).
+    private float _closestCenterDistance = float.PositiveInfinity;
+    private bool _canMeasureApproach = true;  // ClosestPoint needs a primitive or convex mesh
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -65,7 +99,33 @@ public class GoalieSaveZone : MonoBehaviour
             Debug.LogWarning("[GoalieSaveZone] Couldn't find the ball (a GoalDetector with a Rigidbody) — " +
                              "saves are disabled. Assign the Ball field.");
             enabled = false;
+            return;
         }
+
+        _ballRadius = ReadBallRadius();
+        ball.OnGoalScored += HandleGoalScored;
+    }
+
+    void OnDestroy()
+    {
+        if (ball != null)
+            ball.OnGoalScored -= HandleGoalScored;
+    }
+
+    /// <summary>The ball's world radius from its SphereCollider, so the sweep is exactly as wide
+    /// as the ball the player sees.</summary>
+    private float ReadBallRadius()
+    {
+        SphereCollider sphere = _ballRb.GetComponentInChildren<SphereCollider>();
+        if (sphere == null)
+        {
+            Debug.LogWarning($"[GoalieSaveZone] The ball has no SphereCollider — using a {DefaultBallRadius * 100f:F1} cm " +
+                             "radius for the save sweep.");
+            return DefaultBallRadius;
+        }
+
+        Vector3 s = sphere.transform.lossyScale;
+        return sphere.radius * Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
     }
 
     /// <summary>Catches the likely hand-wiring mistakes at Play time.</summary>
@@ -73,9 +133,16 @@ public class GoalieSaveZone : MonoBehaviour
     {
         if (_zoneCollider == null)
         {
-            Debug.LogWarning("[GoalieSaveZone] No Collider on this GameObject — add a trigger Collider " +
-                             "(Capsule/Sphere/Box, whichever fits the stick head shape) around the stick head.");
+            Debug.LogWarning("[GoalieSaveZone] No Collider on this GameObject — add a MeshCollider using the " +
+                             "stick-head mesh (Convex + Is Trigger on).");
             return;
+        }
+
+        if (_zoneCollider is MeshCollider meshCol && !meshCol.convex)
+        {
+            Debug.LogWarning("[GoalieSaveZone] The MeshCollider isn't Convex — tick Convex. A non-convex mesh " +
+                             "can't be a trigger, so saves won't register.");
+            _canMeasureApproach = false;
         }
 
         if (!_zoneCollider.isTrigger)
@@ -114,31 +181,154 @@ public class GoalieSaveZone : MonoBehaviour
         if (!ball.ShotInFlight)
         {
             _hasPrevBallPos = false;
+            _closestCenterDistance = float.PositiveInfinity;
             return;
         }
 
         Vector3 pos = _ballRb.position;
 
-        if (_hasPrevBallPos)
-        {
-            Vector3 segment = pos - _prevBallPos;
-            float distance = segment.magnitude;
-
-            if (distance > 0.0001f)
-            {
-                // The controller is moved by its tracked pose every frame, but Unity only syncs
-                // transform changes to the physics scene at the start of a physics step, so
-                // without this the query below would test against a stale zone pose.
-                Physics.SyncTransforms();
-
-                Ray ray = new Ray(_prevBallPos, segment / distance);
-                if (_zoneCollider.Raycast(ray, out RaycastHit hit, distance))
-                    TryRegister(hit.point, "sweep");
-            }
-        }
+        if (_hasPrevBallPos && CheckStepForSave(pos, "sweep"))
+            return;
 
         _prevBallPos = pos;
+        _prevZoneWorldToLocal = transform.worldToLocalMatrix;
         _hasPrevBallPos = true;
+    }
+
+    /// <summary>Checks the last physics step (ball from _prevBallPos to <paramref name="pos"/>)
+    /// against the stick head and registers a save if they touched. Returns true if a save was
+    /// registered. Called from FixedUpdate, and from the trigger callback so a touch gets the
+    /// same exact contact point.</summary>
+    private bool CheckStepForSave(Vector3 pos, string how)
+    {
+        // The controller is moved by its tracked pose every frame, but Unity only syncs
+        // transform changes to the physics scene at the start of a physics step, so
+        // without this the queries below would test against a stale zone pose.
+        Physics.SyncTransforms();
+
+        // Where the ball started this step, as seen from the stick: its old position in the
+        // stick's old pose, carried into the stick's current pose. Sweeping from there to the
+        // ball's current position is the ball's path relative to the stick, so a stick swung
+        // through the ball's path between two steps is caught. With a still stick this is just
+        // _prevBallPos.
+        Vector3 relStart = sweepStickMotion
+            ? transform.localToWorldMatrix.MultiplyPoint3x4(_prevZoneWorldToLocal.MultiplyPoint3x4(_prevBallPos))
+            : _prevBallPos;
+
+        if (showDebugLogs)
+            TrackClosestApproach(relStart, pos);
+
+        if (!FindContact(relStart, pos, out float t, out Vector3 onStick, out bool startedTouching))
+            return false;
+
+        // The relative path isn't a real world path, so the ball's real center at the touch is
+        // found by how far along the step it happened. That's what's recorded (shot path,
+        // heatmap projection, the goal-plane check in TryRegisterSave).
+        Vector3 worldContact = Vector3.Lerp(_prevBallPos, pos, t);
+
+        if (!TryRegister(worldContact, startedTouching ? how + " (already touching)" : how))
+            return false;
+
+        // Shown against the stick where it is now, so the frozen ball sits on the head even
+        // if the stick has moved on since the touch.
+        SnapBallTo(onStick);
+        return true;
+    }
+
+    /// <summary>Finds where a ball-sized sphere (plus saveMargin) moving from start to end first
+    /// touches the stick head. <paramref name="t"/> is how far along the path (0-1) and
+    /// <paramref name="onStick"/> the ball's center there.
+    /// Two cases:
+    ///  - Already touching at the start (e.g. the stick moved onto the ball's old position):
+    ///    a sweep can't report that reliably, so it's checked first, directly.
+    ///  - Otherwise a sphere sweep. It also hits the ball itself, the floor and the goal, so only
+    ///    hits on this zone's collider count. A hit at distance 0 is the already-touching case
+    ///    again (its hit point is meaningless then).</summary>
+    private bool FindContact(Vector3 start, Vector3 end, out float t, out Vector3 onStick,
+                             out bool startedTouching)
+    {
+        float reach = _ballRadius + saveMargin;
+
+        if (_canMeasureApproach && Vector3.Distance(_zoneCollider.ClosestPoint(start), start) <= reach)
+        {
+            t = 0f;
+            onStick = start;
+            startedTouching = true;
+            return true;
+        }
+
+        t = 0f;
+        onStick = default;
+        startedTouching = false;
+
+        Vector3 segment = end - start;
+        float length = segment.magnitude;
+        if (length < 0.0001f) return false;
+
+        Vector3 dir = segment / length;
+        int count = Physics.SphereCastNonAlloc(start, reach, dir, _sweepHits,
+                                               length, ~0, QueryTriggerInteraction.Collide);
+
+        float best = float.PositiveInfinity;
+        for (int i = 0; i < count; i++)
+        {
+            if (_sweepHits[i].collider == _zoneCollider && _sweepHits[i].distance < best)
+                best = _sweepHits[i].distance;
+        }
+
+        if (float.IsPositiveInfinity(best)) return false;
+
+        best = Mathf.Max(0f, best);
+        t = best / length;
+        onStick = start + dir * best;
+        startedTouching = best <= 0f;
+        return true;
+    }
+
+    /// <summary>Puts the saved ball where it touched the stick head. The physics step has already
+    /// carried it past the head (up to ~36 cm at full speed), and the save freeze stops it where it
+    /// is, so without this it would hang in the air behind the stick. Moves both the Rigidbody and
+    /// the transform, the same teleport RandomLauncher uses, so interpolation can't put it back.
+    /// The freeze has already made it kinematic, which can still be moved.</summary>
+    private void SnapBallTo(Vector3 center)
+    {
+        _ballRb.position = center;
+        _ballRb.transform.position = center;
+    }
+
+    /// <summary>Debug only: the closest the ball's center came to the zone along this step's path,
+    /// sampled at a few points. Good to about a centimeter, which is plenty for a log.</summary>
+    private void TrackClosestApproach(Vector3 from, Vector3 to)
+    {
+        if (!_canMeasureApproach) return;
+
+        for (int i = 0; i <= ApproachSamples; i++)
+        {
+            Vector3 p = Vector3.Lerp(from, to, i / (float)ApproachSamples);
+            float d = Vector3.Distance(_zoneCollider.ClosestPoint(p), p);  // 0 if p is inside
+            if (d < _closestCenterDistance)
+                _closestCenterDistance = d;
+        }
+    }
+
+    /// <summary>Logs how close a goal came to being saved, as the gap between the ball's edge and
+    /// the stick head, so a tester's "I touched that" can be checked against the numbers. Runs
+    /// after this step's sweep (execution order), so the final step is included.</summary>
+    private void HandleGoalScored(Vector3 crossingPos)
+    {
+        if (!showDebugLogs) return;
+
+        if (!useSweepCheck || !_canMeasureApproach || float.IsPositiveInfinity(_closestCenterDistance))
+        {
+            Debug.Log("[GoalieSaveZone] GOAL - closest approach not measured");
+            return;
+        }
+
+        float gapCm = (_closestCenterDistance - _ballRadius) * 100f;
+        float marginCm = saveMargin * 100f;
+        Debug.Log(gapCm > 0f
+            ? $"[GoalieSaveZone] GOAL - ball's edge passed {gapCm:F1} cm from the stick head (save reach {marginCm:F1} cm)"
+            : $"[GoalieSaveZone] GOAL - ball overlapped the stick head by {-gapCm:F1} cm but no save registered");
     }
 
     // ── Trigger contact ───────────────────────────────────────────
@@ -150,13 +340,30 @@ public class GoalieSaveZone : MonoBehaviour
 
     private void HandleContact(Collider other)
     {
-        if (!ball.ShotInFlight) return;
+        // Unity still sends trigger callbacks to a disabled component (e.g. Start found no ball).
+        if (!enabled || _ballRb == null || !ball.ShotInFlight) return;
 
-        // Identify the ball by its GoalDetector rather than a tag/layer (the project has none),
+        // Identify the ball by its Rigidbody rather than a tag/layer (the project has none),
         // so nothing else in the scene — the shooter's stick, the floor — can register a save.
-        if (other.GetComponentInParent<GoalDetector>() != ball) return;
+        if (other.attachedRigidbody != _ballRb) return;
 
-        TryRegister(_ballRb.position, "touch");
+        Vector3 pos = _ballRb.position;
+
+        // Prefer the exact touch point from this step's path. The ball's end-of-step position
+        // can already be past the stick, or past the goal plane even though the touch wasn't.
+        // The sweep ends at this exact overlap with at least the ball's radius, so it always
+        // finds the touch; if it still returns false, GoalDetector refused the save (touch past
+        // the goal plane), and falling back to another point could wrongly overturn that.
+        if (useSweepCheck && _hasPrevBallPos)
+        {
+            CheckStepForSave(pos, "touch");
+            return;
+        }
+
+        // No path to check (sweep off, or the first step of the shot): use the point on the head
+        // nearest the ball, which is where they're touching.
+        Vector3 contact = _canMeasureApproach ? _zoneCollider.ClosestPoint(pos) : pos;
+        TryRegister(contact, "touch");
     }
 
     // ── Registering ───────────────────────────────────────────────
@@ -170,7 +377,13 @@ public class GoalieSaveZone : MonoBehaviour
         bool saved = ball.TryRegisterSave(contactPos, _ballRb.linearVelocity);
 
         if (saved && showDebugLogs)
-            Debug.Log($"[GoalieSaveZone] SAVE via {how} at ({contactPos.x:F2}, {contactPos.y:F2}, {contactPos.z:F2})");
+        {
+            // Local space of the stick head (x = across the head, z = along it), in cm, so a save
+            // near the rim or a corner is easy to spot in the logs.
+            Vector3 local = transform.InverseTransformPoint(contactPos) * 100f;
+            Debug.Log($"[GoalieSaveZone] SAVE via {how} | on head (cm) x {local.x:F1}, y {local.y:F1}, z {local.z:F1} | " +
+                      $"world ({contactPos.x:F2}, {contactPos.y:F2}, {contactPos.z:F2})");
+        }
 
         return saved;
     }
@@ -207,6 +420,13 @@ public class GoalieSaveZone : MonoBehaviour
         else if (col is CapsuleCollider capsule)
         {
             DrawCapsuleGizmo(capsule, fill, outline);
+        }
+        else if (col is MeshCollider meshCol && meshCol.sharedMesh != null)
+        {
+            Gizmos.color = fill;
+            Gizmos.DrawMesh(meshCol.sharedMesh);
+            Gizmos.color = outline;
+            Gizmos.DrawWireMesh(meshCol.sharedMesh);
         }
         else
         {
