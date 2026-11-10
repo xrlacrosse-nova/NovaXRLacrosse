@@ -14,7 +14,7 @@ using UnityEngine;
 /// only shown/cleared manually via ShowPaths()/ClearPaths().
 ///
 /// Each path runs from the launch point to where the shot ended: the gate-plane crossing for a
-/// goal or miss (the same point as that shot's heatmap dot), or the stick for a save. A save also
+/// goal (the same point as that shot's heatmap dot), or the stick for a save. A save also
 /// stores a separate projected tail from the stick to the gate plane. Nothing after the end is
 /// recorded (the project has no bounce shots). A shot that never ends that way (e.g. it deflects
 /// off the goalie's body and despawns) is dropped with a warning, so a session can show fewer
@@ -23,7 +23,7 @@ using UnityEngine;
 [RequireComponent(typeof(GoalDetector))]
 public class ShotPathRecorder : MonoBehaviour
 {
-    public enum PathOutcome { Save, Goal, Miss }
+    public enum PathOutcome { Save, Goal }
 
     public struct ShotPath
     {
@@ -69,6 +69,7 @@ public class ShotPathRecorder : MonoBehaviour
     private readonly List<Vector3> _current = new List<Vector3>();
     private bool _recording = false;
     private bool _pathsShown = false;
+    private bool _showAfterWarmUp = false; // the last session's paths were up when a warm-up started
 
     // ── Public API ────────────────────────────────────────────────
 
@@ -142,6 +143,9 @@ public class ShotPathRecorder : MonoBehaviour
 
     private void HandleShotLaunched()
     {
+        // Warm-up shots aren't recorded; with _recording off, the other handlers skip them too.
+        if (_launcher != null && _launcher.IsWarmUp) return;
+
         // A shot that never ended (e.g. relaunched mid-flight) is dropped rather than kept half-done.
         AbandonOpenPath("a new shot was launched");
         _recording = true;
@@ -155,8 +159,16 @@ public class ShotPathRecorder : MonoBehaviour
         if (!_recording) return;
 
         // GoalScored is set before OnPlaneCrossed fires, so it reflects this exact crossing.
-        PathOutcome outcome = _goalDetector.GoalScored ? PathOutcome.Goal : PathOutcome.Miss;
-        FinishPath(crossingPos, Array.Empty<Vector3>(), crossingPos, outcome);
+        // Every shot is aimed inside the cage, so a crossing outside it is a bug, not a miss:
+        // drop the path, same as ShotHeatmapRecorder and SessionLogger drop the shot.
+        if (!_goalDetector.GoalScored)
+        {
+            AbandonOpenPath($"the ball crossed the goal plane outside the gate at " +
+                            $"({crossingPos.x:F3}, {crossingPos.y:F3})");
+            return;
+        }
+
+        FinishPath(crossingPos, Array.Empty<Vector3>(), crossingPos, PathOutcome.Goal);
     }
 
     /// <summary>OnSaved and OnPlaneCrossed are mutually exclusive per shot, so each path is
@@ -284,13 +296,33 @@ public class ShotPathRecorder : MonoBehaviour
         return QuadrantMath.BucketFromNormalized(normalized);
     }
 
+    /// <summary>A warm-up keeps the last session's paths but hides them (closing any replay,
+    /// as a normal start does); they come back when it ends.</summary>
     private void HandleSessionStarted()
     {
+        if (_launcher.IsWarmUp)
+        {
+            AbandonOpenPath("a warm-up started");
+            _showAfterWarmUp = _pathsShown;
+            _pathsShown = false;
+            OnPathsCleared?.Invoke();
+            return;
+        }
+
+        _showAfterWarmUp = false;
         ClearPaths();
     }
 
     private void HandleSessionEnded()
     {
+        if (_launcher.IsWarmUp)
+        {
+            if (_showAfterWarmUp)
+                ShowPaths();
+            _showAfterWarmUp = false;
+            return;
+        }
+
         // Covers the last shot when RandomLauncher's despawn handler (which ends the session)
         // runs before HandleDespawned.
         AbandonOpenPath("the session ended before the shot finished");

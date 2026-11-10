@@ -44,12 +44,6 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/PixelSensors.unity
     guid: 193a3e11ac86f7640a8418aac27d2eb4
-  - enabled: 0
-    path: Assets/Practice_Unity.unity
-    guid: 4d52cb91b4d1e444c9ce42333409c755
-  - enabled: 0
-    path: Assets/Scenes/Practice_Unity.unity
-    guid: 52d780a590954ee4cb9d5dcbc380db0a
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: bb4daeceea261404d9e9069323220d1b,
       type: 3}

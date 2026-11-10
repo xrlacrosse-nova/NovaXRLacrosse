@@ -19,7 +19,7 @@ using UnityEngine.Rendering;
 /// Streaks taper and fade toward the launch end, so the pile-up near the shooter stays readable.
 /// Color is the outcome (UiPalette tokens, matching the heatmap), and the end marker backs it up
 /// by shape, as the heatmap does: × on the gate plane for a goal, a sphere at the stick for a
-/// save, nothing for a miss. A save's line stops at the stick, with a thin dim tail on to the
+/// save. A save's line stops at the stick, with a thin dim tail on to the
 /// gate plane.
 /// </summary>
 public class ShotPathVisualizer : MonoBehaviour
@@ -73,9 +73,6 @@ public class ShotPathVisualizer : MonoBehaviour
 
     [Tooltip("Shots that scored.")]
     public Color scoreColor = UiPalette.Goal;
-
-    [Tooltip("Shots wide of the cage.")]
-    public Color missColor = UiPalette.Miss;
 
     // ── Private ───────────────────────────────────────────────────
 
@@ -300,11 +297,6 @@ public class ShotPathVisualizer : MonoBehaviour
 
     private Color ColorFor(ShotPathRecorder.PathOutcome outcome)
     {
-        switch (outcome)
-        {
-            case ShotPathRecorder.PathOutcome.Goal: return scoreColor;
-            case ShotPathRecorder.PathOutcome.Save: return saveColor;
-            default: return missColor;
-        }
+        return outcome == ShotPathRecorder.PathOutcome.Goal ? scoreColor : saveColor;
     }
 }

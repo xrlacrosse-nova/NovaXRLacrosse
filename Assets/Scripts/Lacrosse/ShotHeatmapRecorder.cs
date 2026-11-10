@@ -161,6 +161,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
     private List<RecordedShot> _lifetimeShots; // non-null while the Lifetime view is shown
     private List<RecordedShot> _replayShots;   // non-null while a saved session is replayed
     private string _replayLevel = "";          // that session's level name
+    private string _liveLevel;                 // level of the live session, set at its start; null before the first
 
     private int _nextSession = 0;    // session index stamped on the shots being recorded now
     private bool _committed = false; // _shots already added to _history
@@ -230,8 +231,12 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     // ── Recording ────────────────────────────────────────────────
 
+    private bool IsWarmUp => _launcher != null && _launcher.IsWarmUp;
+
     private void HandlePlaneCrossed(Vector3 crossingPos)
     {
+        if (IsWarmUp) return;
+
         // GoalDetector's own verdict, set before OnPlaneCrossed fires. Every shot is aimed
         // inside the cage, so a crossing outside it is a bug rather than a miss: warn and
         // leave it off the readout.
@@ -250,6 +255,8 @@ public class ShotHeatmapRecorder : MonoBehaviour
     /// The two events are mutually exclusive per shot, so nothing is recorded twice.</summary>
     private void HandleSaved(Vector3 projectedPos)
     {
+        if (IsWarmUp) return;
+
         RecordShot(projectedPos, scored: false);
     }
 
@@ -267,13 +274,31 @@ public class ShotHeatmapRecorder : MonoBehaviour
                   $"normalized=({normalized.x:F3}, {normalized.y:F3}) scored={scored}");
     }
 
+    /// <summary>A warm-up keeps the last session's shots but hides the heatmap (closing any
+    /// Lifetime view or replay, as a normal start does).</summary>
     private void HandleSessionStarted()
     {
+        if (IsWarmUp)
+        {
+            _lifetimeShots = null;
+            _replayShots = null;
+            HideDisplay();
+            return;
+        }
+
+        _liveLevel = _difficulty != null ? _difficulty.SelectedName : "";
         ClearRecordedShots();
     }
 
+    /// <summary>After a warm-up, the last session's heatmap comes back as it was.</summary>
     private void HandleSessionEnded()
     {
+        if (IsWarmUp)
+        {
+            ShowLive();
+            return;
+        }
+
         CommitSession();
         ShowHeatmap();
     }
@@ -524,12 +549,12 @@ public class ShotHeatmapRecorder : MonoBehaviour
             }
         }
 
-        // The difficulty, so screenshots say what level the session was at. It can't change
-        // mid-session, so the selector's current level is the session's level. Lifetime spans
-        // many levels, so it's labelled as Lifetime instead. A replay shows its own session's level.
+        // The difficulty, so screenshots say what level the session was at. Taken at the session's
+        // start, so picking another level afterwards (Warm-up included) doesn't relabel it. Lifetime
+        // spans many levels, so it's labelled as Lifetime instead. A replay shows its own session's level.
         string level = lifetime ? "Lifetime"
                      : replay ? _replayLevel
-                     : _difficulty != null ? _difficulty.SelectedName : "";
+                     : _liveLevel ?? (_difficulty != null ? _difficulty.SelectedName : "");
 
         string Count(Quadrant q)
         {

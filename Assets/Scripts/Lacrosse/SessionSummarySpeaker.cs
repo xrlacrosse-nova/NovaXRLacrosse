@@ -80,7 +80,7 @@ public class SessionSummarySpeaker : MonoBehaviour
         if (sessionLogger != null)
             sessionLogger.OnSessionSaved += HandleSessionSaved;
         if (launcher != null)
-            launcher.OnSessionStarted += Clear;
+            launcher.OnSessionStarted += HandleSessionStarted;
         if (players != null)
             players.OnPlayerChanged += HandlePlayerChanged;
     }
@@ -90,7 +90,7 @@ public class SessionSummarySpeaker : MonoBehaviour
         if (sessionLogger != null)
             sessionLogger.OnSessionSaved -= HandleSessionSaved;
         if (launcher != null)
-            launcher.OnSessionStarted -= Clear;
+            launcher.OnSessionStarted -= HandleSessionStarted;
         if (players != null)
             players.OnPlayerChanged -= HandlePlayerChanged;
     }
@@ -129,6 +129,19 @@ public class SessionSummarySpeaker : MonoBehaviour
         LastSummary = summary;
         CancelPending();
         _pending = StartCoroutine(SpeakAfterDelay(summary));
+    }
+
+    /// <summary>A warm-up only stops the speech: the last summary is kept, so Repeat still
+    /// says it afterwards (the warm-up itself is never summarized).</summary>
+    private void HandleSessionStarted()
+    {
+        if (launcher.IsWarmUp)
+        {
+            CancelPending();
+            _tts.Stop();
+            return;
+        }
+        Clear();
     }
 
     private void HandlePlayerChanged(PlayerProfile _) => Clear();

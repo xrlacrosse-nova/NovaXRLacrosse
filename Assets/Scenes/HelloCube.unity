@@ -1309,7 +1309,7 @@ MonoBehaviour:
   fillColor: {r: 1, g: 0, b: 0, a: 1}
   showTrack: 1
   trackColor: {r: 1, g: 1, b: 1, a: 0.25}
-  dwellSeconds: 10
+  dwellSeconds: 5
   drainSpeedMultiplier: 2
   rearmDelay: 2
   gazeCamera: {fileID: 0}
@@ -2274,7 +2274,7 @@ MonoBehaviour:
   launchSpeed: 23
   launchSpeedVariance: 0
   useUnityGravity: 1
-  shotGravityScale: 0.25
+  shotGravityScale: 1
   autoResetOnLaunch: 1
   enableCustomGravityOnGoal: 1
   customGravity: 9.81
@@ -2287,6 +2287,10 @@ MonoBehaviour:
   shooterAnimation: {fileID: 229782168}
   countdownText: {fileID: 1065477489}
   readyLabel: 
+  warmUpEnabled: 1
+  warmUpShotsPerQuadrant: 3
+  warmUpLabel: WARM-UP
+  difficulty: {fileID: 0}
   releaseWatchdogSeconds: 5
 --- !u!114 &866954163
 MonoBehaviour:
@@ -2406,7 +2410,6 @@ MonoBehaviour:
   goalMarkerThickness: 0.012
   saveColor: {r: 0, g: 1, b: 0, a: 1}
   scoreColor: {r: 1, g: 0, b: 0, a: 1}
-  missColor: {r: 0.43137255, g: 0.47843137, b: 0.5254902, a: 1}
 --- !u!114 &866954168
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3330,8 +3333,8 @@ MonoBehaviour:
   originChangeCooldown: 3
   menuHoldRecenter: 1
   menuHoldSeconds: 1
-  lookDownPrompt: Look down at the floor
-  lookAheadPrompt: Look at the shooter
+  lookDownPrompt: Please look down at the floor
+  lookAheadPrompt: Please look Straight Ahead
   readyPrompt: Ready
   floorNotFoundPrompt: Floor not found. Look at the floor.
   repromptSeconds: 8

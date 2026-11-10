@@ -69,8 +69,7 @@ public struct BallFlightSettings
 /// Spin is fixed per shot: the solve picks it (see <see cref="SolveLaunchVelocity"/>) and
 /// <see cref="BeginFlight"/> applies that same spin, so solve and flight always agree.
 ///
-/// Setup: add to the ball, next to RandomLauncher / GoalDetector / FloorBoundary. Don't put it
-/// on a ball with LacrossBallPhysics (that has its own gravity and bounce logic).
+/// Setup: add to the ball, next to RandomLauncher / GoalDetector / FloorBoundary.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class BallFlight : MonoBehaviour

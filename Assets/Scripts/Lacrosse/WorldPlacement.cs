@@ -19,9 +19,9 @@ using UnityEngine.XR.ARSubsystems;
 ///
 /// Re-placing moves only the ML Rig (this XROrigin), never WorldOrigin, so everything in the world
 /// keeps its coordinates and stays lined up with everything else:
-///   1. "Look down at the floor": waits until the head has pitched down for LookDownSeconds, so
+///   1. "Please look down at the floor": waits until the head has pitched down for LookDownSeconds, so
 ///      the headset sees the floor (and floor planes can be found).
-///   2. "Look at the shooter": waits until the head is tracked, level and still.
+///   2. "Please look straight ahead": waits until the head is tracked, level and still.
 ///   3. Turns the rig around the head (vertical axis only) so the head faces the rig's scene
 ///      forward, slides it so the head is over the rig's scene position, and, if a steady floor
 ///      plane was found, sets the rig's height so that plane is the virtual floor.
@@ -73,8 +73,8 @@ public class WorldPlacement : MonoBehaviour
     public float menuHoldSeconds = 1f;
 
     [Header("Prompts")]
-    public string lookDownPrompt = "Look down at the floor";
-    public string lookAheadPrompt = "Look at the shooter";
+    public string lookDownPrompt = "Please look down at the floor";
+    public string lookAheadPrompt = "Please look straight ahead";
     public string readyPrompt = "Ready";
     public string floorNotFoundPrompt = "Floor not found. Look at the floor.";
 

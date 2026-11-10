@@ -134,6 +134,12 @@ public class RandomLauncher : MonoBehaviour
              "Empty = plain GET READY. Set by DifficultySelector.")]
     public string readyLabel = "";
 
+    /// <summary>True when the Warm-up level is the one applied. Set by DifficultyLevel.ApplyTo,
+    /// so it follows the settings page's DIFFICULTY column like the speed does. A session started
+    /// with it on is a warm-up: not recorded, and its shots go to the corners in a fixed order
+    /// (WarmUpQuadrant). Speed, shot count and countdown label come from the level as usual.</summary>
+    public bool WarmUpSelected { get; set; }
+
     // ── Private ───────────────────────────────────────────────────
 
     private Rigidbody _rb;
@@ -157,6 +163,12 @@ public class RandomLauncher : MonoBehaviour
     // session state
     private bool _sessionRunning = false;
     private int _shotsFiredThisSession = 0;
+
+    // warm-up: the order its shots go in, and whether the running session is one
+    private static readonly Quadrant[] WarmUpOrder =
+        { Quadrant.TopLeft, Quadrant.TopRight, Quadrant.BottomLeft, Quadrant.BottomRight };
+
+    private bool _isWarmUp = false;
 
     // shot waiting on the shooter animation's release frame
     private bool _awaitingRelease = false;
@@ -184,6 +196,10 @@ public class RandomLauncher : MonoBehaviour
 
     /// <summary>True from the start of the pre-start countdown until the session ends.</summary>
     public bool IsSessionRunning => _sessionRunning;
+
+    /// <summary>True while a warm-up runs: set before OnSessionStarted and cleared only after
+    /// OnSessionEnded's listeners have run, so recorders can skip the whole warm-up.</summary>
+    public bool IsWarmUp => _isWarmUp;
 
     /// <summary>Quadrant the most recent shot was aimed at. Set in LaunchToward before
     /// GoalDetector.OnShotLaunched fires, so a listener to that event reads this shot's aim.</summary>
@@ -337,8 +353,17 @@ public class RandomLauncher : MonoBehaviour
         if (_shotsFiredThisSession >= shotsPerSession)
         {
             _sessionRunning = false;
-            Debug.Log($"[RandomLauncher] Session complete ({shotsPerSession} shots fired).");
-            OnSessionEnded?.Invoke();
+            Debug.Log($"[RandomLauncher] {(_isWarmUp ? "Warm-up" : "Session")} complete " +
+                      $"({shotsPerSession} shots fired).");
+            try
+            {
+                OnSessionEnded?.Invoke();
+            }
+            finally
+            {
+                // After the listeners, so recorders still see IsWarmUp while they skip it.
+                _isWarmUp = false;
+            }
             return;
         }
 
@@ -397,6 +422,12 @@ public class RandomLauncher : MonoBehaviour
         // The ball stays out of sight until it's shot — LaunchToward() shows it again.
         if (_floorBoundary != null)
             _floorBoundary.Hide();
+
+        // Before OnSessionStarted: listeners read IsWarmUp then. Latched for the whole session
+        // (the level can't change mid-session anyway).
+        _isWarmUp = WarmUpSelected;
+        if (_isWarmUp)
+            Debug.Log($"[RandomLauncher] Warm-up: {shotsPerSession} shots at {launchSpeed} m/s.");
 
         OnSessionStarted?.Invoke();
 
@@ -470,13 +501,13 @@ public class RandomLauncher : MonoBehaviour
 
         if (shooterAnimation == null || !shooterAnimation.IsAvailable)
         {
-            LaunchBall();
+            LaunchToward(PickSessionQuadrant());
             return;
         }
 
         // Pick the quadrant now, but launch on the animation's release frame
         // (HandleShooterRelease), so the ball leaves the stick when the avatar shoots.
-        _pendingQuadrant = PickRandomQuadrant();
+        _pendingQuadrant = PickSessionQuadrant();
         _awaitingRelease = true;
         if (_releaseWatchdog != null) StopCoroutine(_releaseWatchdog);
         _releaseWatchdog = StartCoroutine(ReleaseWatchdog());
@@ -645,6 +676,28 @@ public class RandomLauncher : MonoBehaviour
     }
 
     // ── Private helpers ───────────────────────────────────────────
+
+    /// <summary>The quadrant warm-up shot <paramref name="shotNumber"/> (1 = first) goes to:
+    /// the session's shots split evenly over the corners in a row, top left first (12 shots =
+    /// 3 each). ShotsRemainingDisplay shows it before the shot, so this must stay the order
+    /// PickSessionQuadrant fires in.</summary>
+    public Quadrant WarmUpQuadrant(int shotNumber)
+    {
+        int index = (shotNumber - 1) * WarmUpOrder.Length / Mathf.Max(1, shotsPerSession);
+        return WarmUpOrder[Mathf.Clamp(index, 0, WarmUpOrder.Length - 1)];
+    }
+
+    /// <summary>A session shot's quadrant: random, or in a warm-up the fixed order
+    /// (WarmUpQuadrant). Call after _shotsFiredThisSession++.</summary>
+    private Quadrant PickSessionQuadrant()
+    {
+        if (!_isWarmUp)
+            return PickRandomQuadrant();
+
+        Quadrant quadrant = WarmUpQuadrant(_shotsFiredThisSession);
+        Debug.Log($"[RandomLauncher] Warm-up shot {_shotsFiredThisSession}: aiming at quadrant: {quadrant}");
+        return quadrant;
+    }
 
     private Quadrant PickRandomQuadrant()
     {

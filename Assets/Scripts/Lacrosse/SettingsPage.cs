@@ -750,12 +750,13 @@ public class SettingsPage : MonoBehaviour
     }
 
     /// <summary>DIFFICULTY column on the right half of the Main page: one pick-one row per level.
-    /// Left out entirely when there's no DifficultySelector, so the page can ship without it.</summary>
-    private void BuildDifficultyColumn(float x, float columnWidth)
+    /// Left out entirely when there's no DifficultySelector, so the page can ship without it.
+    /// Returns the y just below it (the column's top when it's left out).</summary>
+    private float BuildDifficultyColumn(float x, float columnWidth)
     {
-        if (difficulty == null || difficulty.Levels == null) return;
-
         float y = gap * 2f;
+        if (difficulty == null || difficulty.Levels == null) return y;
+
         CreateLabel(_mainPage, "DIFFICULTY", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.4f),
                     UiPalette.Chalk, TextAlignmentOptions.Left);
         y += fontSize * 1.4f + gap;
@@ -777,6 +778,7 @@ public class SettingsPage : MonoBehaviour
         _difficultyMessage = CreateLabel(_mainPage, "", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.2f),
                                          UiPalette.Smoke, TextAlignmentOptions.Left);
         RefreshDifficultyRows();
+        return y + fontSize * 1.2f + gap;
     }
 
     /// <summary>Row click. A refused change (session running, level missing) says so on the

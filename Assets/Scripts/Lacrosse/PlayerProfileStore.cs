@@ -11,7 +11,7 @@ public class PlayerProfile
     public string id;
     public string displayName;      // 1–12 chars, letters, digits and spaces
     public string createdUtc;
-    public string difficulty;       // last chosen Difficulty enum name, "" until they pick one
+    public string difficulty;       // last chosen Difficulty enum name (WarmUp too), "" until they pick one
 }
 
 /// <summary>profiles.json: every player and the one selected last.</summary>
