@@ -2469,12 +2469,12 @@ MonoBehaviour:
     displayName: Warm-up
     launchSpeed: 16
     launchSpeedVariance: 1
-    edgePadding: 0.02
+    edgePadding: 0.2
     quadrantDepth: 0.5
     shotsPerSession: 12
     crowdVolume: 0.3
-  selected: 3
-  rememberSelection: 0
+  selected: 1
+  rememberSelection: 1
   launcher: {fileID: 0}
   crowd: {fileID: 0}
   players: {fileID: 0}
