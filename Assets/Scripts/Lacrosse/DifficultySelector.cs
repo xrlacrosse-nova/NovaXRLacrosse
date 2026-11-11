@@ -132,32 +132,54 @@ public class DifficultySelector : MonoBehaviour
             selected = level.difficulty;
         }
 
+        // First run with profiles: the selected player takes on the level they're starting at,
+        // but never Warm-up (it isn't saved), so a player starting on it gets High school.
+        bool firstRun = players != null && !TryParseLevel(players.CurrentPlayer.difficulty, out _);
+        if (firstRun && rememberSelection && selected == Difficulty.WarmUp)
+        {
+            DifficultyLevel remembered = FirstRememberedLevel();
+            if (remembered != null)
+            {
+                level = remembered;
+                selected = remembered.difficulty;
+            }
+        }
+
         level.ApplyTo(launcher, crowd);
         Debug.Log($"[DifficultySelector] Starting on {level.displayName}.");
 
-        // First run with profiles: the selected player takes on the level they're starting at.
-        if (players != null && !TryParseLevel(players.CurrentPlayer.difficulty, out _))
+        if (firstRun)
             SaveSelection();
 
         OnDifficultyChanged?.Invoke(selected);
     }
 
     /// <summary>Switches to the new player's level. One who never picked a level keeps the
-    /// current one, which becomes theirs.</summary>
+    /// current one, which becomes theirs — except Warm-up, which is never saved: they get
+    /// High school instead, so Warm-up doesn't carry over to the new player.</summary>
     private void HandlePlayerChanged(PlayerProfile player)
     {
         if (!rememberSelection || player == null) return;
 
-        if (!TryParseLevel(player.difficulty, out Difficulty theirs))
+        bool hasSaved = TryParseLevel(player.difficulty, out Difficulty theirs);
+        if (!hasSaved)
         {
-            SaveSelection();
-            return;
+            if (selected != Difficulty.WarmUp)
+            {
+                SaveSelection();
+                return;
+            }
+            DifficultyLevel remembered = FirstRememberedLevel();
+            if (remembered == null) return;
+            theirs = remembered.difficulty;
         }
         if (theirs == selected) return;
 
         selected = theirs;
         DifficultyLevel level = FindLevel(theirs);
         level.ApplyTo(launcher, crowd);
+        if (!hasSaved)
+            SaveSelection();
         Debug.Log($"[DifficultySelector] {player.displayName} plays on {level.displayName}.");
         OnDifficultyChanged?.Invoke(theirs);
     }
@@ -259,10 +281,13 @@ public class DifficultySelector : MonoBehaviour
     }
 
     /// <summary>Saves the current choice: on the selected player with a store, else in the
-    /// shared PlayerPrefs key. Nothing when Remember Selection is off.</summary>
+    /// shared PlayerPrefs key. Nothing when Remember Selection is off, or for Warm-up: its
+    /// sessions aren't recorded, so a remembered Warm-up would silently stop recording every
+    /// session after a relaunch (Session_Robustness_Plan.md, P3).</summary>
     private void SaveSelection()
     {
         if (!rememberSelection) return;
+        if (selected == Difficulty.WarmUp) return;
 
         if (players != null)
         {
@@ -274,10 +299,27 @@ public class DifficultySelector : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    /// <summary>A stored difficulty name that's still in the Levels list.</summary>
+    /// <summary>A stored difficulty name that's still in the Levels list. A stored Warm-up
+    /// (written before it stopped being saved) counts as nothing saved.</summary>
     private bool TryParseLevel(string stored, out Difficulty difficulty)
     {
-        return Enum.TryParse(stored, out difficulty) && FindLevel(difficulty) != null;
+        return Enum.TryParse(stored, out difficulty) && difficulty != Difficulty.WarmUp &&
+               FindLevel(difficulty) != null;
+    }
+
+    /// <summary>The level a player gets when nothing is saved and Warm-up is selected: High
+    /// school, or the first non-warm-up level if High school isn't in the list.</summary>
+    private DifficultyLevel FirstRememberedLevel()
+    {
+        DifficultyLevel highSchool = FindLevel(Difficulty.HighSchool);
+        if (highSchool != null) return highSchool;
+
+        foreach (DifficultyLevel level in levels)
+        {
+            if (level != null && level.difficulty != Difficulty.WarmUp)
+                return level;
+        }
+        return null;
     }
 
     private DifficultyLevel FirstLevel()
