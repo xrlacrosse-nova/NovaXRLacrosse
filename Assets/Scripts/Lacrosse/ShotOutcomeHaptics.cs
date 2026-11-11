@@ -76,17 +76,10 @@ public class ShotOutcomeHaptics : MonoBehaviour
 
     void Pulse(float amplitude, float duration, string label)
     {
-        // Same graceful-failure pattern as RandomLauncher: MagicLeapController.Instance throws if
-        // there's no InputActionManager in the scene (e.g. Editor testing without the ML rig).
-        bool sent;
-        try
-        {
-            sent = MagicLeapController.Instance.SendHapticImpulse(amplitude, duration);
-        }
-        catch (System.NullReferenceException)
-        {
-            sent = false;
-        }
+        // No controller without an InputActionManager in the scene (e.g. Editor testing without
+        // the ML rig); see ControllerAccess.
+        bool sent = ControllerAccess.TryGetController(out MagicLeapController controller) &&
+                    controller.SendHapticImpulse(amplitude, duration);
 
         if (!sent)
         {
