@@ -590,7 +590,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
                 if (cornerLabels[i] == null) continue;
 
                 Quadrant q = (Quadrant)i;
-                cornerLabels[i].text = $"{PositionName(q)}\n{Count(q)}";
+                cornerLabels[i].text = $"{QuadrantMath.PositionName(q)}\n{Count(q)}";
                 cornerLabels[i].alignment = CornerAlignment(q);
                 cornerLabels[i].color = UiPalette.Chalk;
             }
@@ -602,7 +602,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
             string Corner(Quadrant q)
             {
                 int index = (int)q;
-                return $"{PositionName(q)}: {saves[index]}/{totals[index]}";
+                return $"{QuadrantMath.PositionName(q)}: {saves[index]}/{totals[index]}";
             }
 
             // Level inline here, so the corner lines below keep their place.
@@ -613,19 +613,6 @@ public class ShotHeatmapRecorder : MonoBehaviour
                 trendLine +
                 $"{Corner(Quadrant.TopLeft)}  ·  {Corner(Quadrant.TopRight)}\n" +
                 $"{Corner(Quadrant.BottomLeft)}  ·  {Corner(Quadrant.BottomRight)}";
-        }
-    }
-
-    /// <summary>Plain position name for a corner, as the goalie sees the goal. Shared with the
-    /// settings page's History trend line, so both name corners the same way.</summary>
-    public static string PositionName(Quadrant quadrant)
-    {
-        switch (quadrant)
-        {
-            case Quadrant.TopLeft: return "Top left";
-            case Quadrant.TopRight: return "Top right";
-            case Quadrant.BottomLeft: return "Bottom left";
-            default: return "Bottom right";
         }
     }
 

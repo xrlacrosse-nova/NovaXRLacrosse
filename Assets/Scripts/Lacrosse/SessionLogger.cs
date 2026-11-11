@@ -125,13 +125,11 @@ public class SessionLogger : MonoBehaviour
         _session = null;
 
         session.endedUtc = DateTime.UtcNow.ToString("o");
-        foreach (ShotRecord shot in session.shots)
-        {
-            if (shot.outcome == ShotRecord.Save)
-                session.saves++;
-            else
-                session.goals++;
-        }
+
+        // Same count as the index summary, so the session file and index.json can't disagree.
+        SessionSummary totals = SessionFiles.Summarize(session, null);
+        session.saves = totals.saves;
+        session.goals = totals.goals;
 
         AttachPaths(session);
 
