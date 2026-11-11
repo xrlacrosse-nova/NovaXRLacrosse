@@ -33,6 +33,9 @@ public class ProfileList
 ///   - Every change is refused while a session is running (the settings page is hidden then
 ///     anyway); this keeps the rule in one place.
 ///   - profiles.json is saved after each change (tmp-then-replace, SessionFiles.WriteAtomic).
+///   - A broken profiles.json is backed up as profiles.json.corrupt before anything replaces it.
+///     If the backup fails, the store is read-only for the run (IsReadOnly): every change is
+///     refused and no sessions are saved.
 /// No UI of its own: SettingsPage calls Select / AddPlayer / Rename / Delete / ValidateName.
 ///
 /// Setup: add to an empty "Players" GameObject. The launcher is found automatically if left empty.
@@ -51,6 +54,7 @@ public class PlayerProfileStore : MonoBehaviour
 
     private ProfileList _list;
     private PlayerProfile _current;
+    private bool _readOnly;   // profiles.json was broken and couldn't be backed up: write nothing this run
 
     // ── Public API ────────────────────────────────────────────────
 
@@ -72,6 +76,19 @@ public class PlayerProfileStore : MonoBehaviour
         {
             EnsureLoaded();
             return _current;
+        }
+    }
+
+    /// <summary>True for the rest of the run when profiles.json couldn't be read and couldn't be
+    /// kept aside as profiles.json.corrupt. Nothing is written then: no profile changes and no
+    /// sessions (SessionLogger checks this), so the broken file is still there to recover and
+    /// nothing is saved under the stand-in "Player 1", whose id changes every launch.</summary>
+    public bool IsReadOnly
+    {
+        get
+        {
+            EnsureLoaded();
+            return _readOnly;
         }
     }
 
@@ -258,6 +275,12 @@ public class PlayerProfileStore : MonoBehaviour
 
     private bool CanChange(string action)
     {
+        if (_readOnly)
+        {
+            Debug.LogWarning($"[PlayerProfileStore] Can't {action}: profiles.json is broken and couldn't be " +
+                             "backed up, so nothing is saved this run — refused. Relaunch to try again.");
+            return false;
+        }
         if (launcher != null && launcher.IsSessionRunning)
         {
             Debug.Log($"[PlayerProfileStore] Can't {action} during a session — refused.");
@@ -266,8 +289,9 @@ public class PlayerProfileStore : MonoBehaviour
         return true;
     }
 
-    /// <summary>Loads profiles.json once. A broken file is kept aside as profiles.json.corrupt
-    /// (never overwritten blind) and the store starts over with "Player 1".</summary>
+    /// <summary>Loads profiles.json once. A broken file is copied aside as profiles.json.corrupt
+    /// and the store starts over with "Player 1". If that copy fails, the store goes read-only
+    /// for the run (IsReadOnly), so the broken file is never overwritten without a backup.</summary>
     private void EnsureLoaded()
     {
         if (_list != null) return;
@@ -283,7 +307,10 @@ public class PlayerProfileStore : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[PlayerProfileStore] profiles.json couldn't be read or kept aside ({e.Message}).");
+                _readOnly = true;
+                Debug.LogError($"[PlayerProfileStore] profiles.json couldn't be read or kept aside ({e.Message}). " +
+                               "Nothing will be saved this run (no player changes, no sessions), so it isn't " +
+                               "overwritten. Relaunch to try again.");
             }
         }
 
@@ -310,6 +337,10 @@ public class PlayerProfileStore : MonoBehaviour
 
     private void Save()
     {
+        // Covers the immediate first-run save in EnsureLoaded, which used to overwrite the
+        // broken profiles.json at load. Already reported there, so no log here.
+        if (_readOnly) return;
+
         _list.selectedPlayerId = _current.id;
         try
         {
