@@ -47,6 +47,7 @@ public class SessionLogger : MonoBehaviour
     private SessionRecord _session;           // null outside a session (or with no store)
     private float _sessionStartTime;
     private ShotRecord _pending;              // launched, not ended yet
+    private bool _warnedReadOnly;             // logged once that sessions aren't saved this run
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -124,15 +125,26 @@ public class SessionLogger : MonoBehaviour
         _session = null;
 
         session.endedUtc = DateTime.UtcNow.ToString("o");
-        foreach (ShotRecord shot in session.shots)
-        {
-            if (shot.outcome == ShotRecord.Save)
-                session.saves++;
-            else
-                session.goals++;
-        }
+
+        // Same count as the index summary, so the session file and index.json can't disagree.
+        SessionSummary totals = SessionFiles.Summarize(session, null);
+        session.saves = totals.saves;
+        session.goals = totals.goals;
 
         AttachPaths(session);
+
+        // profiles.json is broken and couldn't be backed up: the player is a stand-in whose id
+        // changes every launch, so a saved session would be orphaned (Session_Robustness_Plan.md, P6).
+        if (players != null && players.IsReadOnly)
+        {
+            if (!_warnedReadOnly)
+            {
+                _warnedReadOnly = true;
+                Debug.LogWarning("[SessionLogger] Player data is read-only this run (profiles.json couldn't " +
+                                 "be backed up) — sessions aren't saved.");
+            }
+            return;
+        }
 
         try
         {

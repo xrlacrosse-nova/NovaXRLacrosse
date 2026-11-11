@@ -206,4 +206,18 @@ public static class QuadrantMath
         crossing = pos + vel * time + 0.5f * gravity * time * time;
         return true;
     }
+
+    /// <summary>Plain position name for a corner, as the goalie sees the goal ("Top left").
+    /// Every readout (heatmap, settings page History line, spoken summary, warm-up label) uses
+    /// this, so they all name corners the same way.</summary>
+    public static string PositionName(Quadrant quadrant)
+    {
+        switch (quadrant)
+        {
+            case Quadrant.TopLeft: return "Top left";
+            case Quadrant.TopRight: return "Top right";
+            case Quadrant.BottomLeft: return "Bottom left";
+            default: return "Bottom right";
+        }
+    }
 }

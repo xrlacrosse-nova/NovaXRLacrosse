@@ -153,10 +153,13 @@ public class SessionHistory : MonoBehaviour
     private void HandleSessionEnded() => _cachedShots = null;
 
     /// <summary>A replay belongs to the player who was selected; the All Sessions history
-    /// switches to the new player's.</summary>
+    /// switches to the new player's, and the last player's ended session is dropped from the
+    /// board.</summary>
     private void HandlePlayerChanged(PlayerProfile _)
     {
         CloseReplay();
+        if (heatmap != null)
+            heatmap.DropEndedSession();
         FeedHeatmapHistory();
     }
 

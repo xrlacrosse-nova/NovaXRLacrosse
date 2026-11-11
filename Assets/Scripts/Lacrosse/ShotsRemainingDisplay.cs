@@ -119,7 +119,7 @@ public class ShotsRemainingDisplay : MonoBehaviour
             // can be named: a warm-up is for learning the corners, not reacting to surprise.
             int shotNumber = launcher.shotsPerSession - _shotsLeft + 1;
             string corner = _shotsLeft > 0
-                ? $"\n<size=70%>{ShotHeatmapRecorder.PositionName(launcher.WarmUpQuadrant(shotNumber))}</size>"
+                ? $"\n<size=70%>{QuadrantMath.PositionName(launcher.WarmUpQuadrant(shotNumber))}</size>"
                 : "";
             label.text = $"WARM-UP {_shotsLeft}{corner}";
         }

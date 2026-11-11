@@ -96,40 +96,80 @@ public static class SessionFiles
         return file;
     }
 
-    /// <summary>The player's index.json, rebuilt from the session files if it's missing or
-    /// broken. Empty for a player with no sessions yet.</summary>
+    /// <summary>The player's index.json, rebuilt from the session files if it's missing, broken,
+    /// or lists a different number of sessions than there are files (e.g. a session file was
+    /// written but the index write after it failed). Empty for a player with no sessions yet.</summary>
     public static SessionIndex LoadIndex(string playerId)
     {
         if (TryRead(IndexPath(playerId), out SessionIndex index) && index.sessions != null)
-            return index;
+        {
+            int files = CountSessionFiles(playerId);
+            if (files == index.sessions.Count)
+                return index;
+
+            Debug.LogWarning($"[SessionFiles] index.json for player {playerId} lists {index.sessions.Count} " +
+                             $"sessions but there are {files} session files — rebuilding it.");
+        }
 
         return RebuildIndex(playerId);
     }
 
     /// <summary>Summarizes every readable session file, oldest first, and writes the result as
-    /// the new index.json (only if there was anything to index).</summary>
+    /// the new index.json (if there's anything to index, or an old index.json to replace).
+    /// A session file that can't be read is renamed to .json.corrupt, so it stops counting as a
+    /// session and the next load doesn't rebuild again. Nothing is deleted.</summary>
     public static SessionIndex RebuildIndex(string playerId)
     {
         var index = new SessionIndex();
         string folder = SessionsFolder(playerId);
-        if (!Directory.Exists(folder))
-            return index;
-
-        foreach (string path in Directory.GetFiles(folder, "*.json"))
+        if (Directory.Exists(folder))
         {
-            if (TryRead(path, out SessionRecord session) && session.shots != null)
-                index.sessions.Add(Summarize(session, Path.GetFileName(path)));
+            foreach (string path in Directory.GetFiles(folder, "*.json"))
+            {
+                if (TryRead(path, out SessionRecord session) && session.shots != null)
+                    index.sessions.Add(Summarize(session, Path.GetFileName(path)));
+                else
+                    SetAside(path);
+            }
         }
 
         // ISO round-trip UTC strings sort in time order.
         index.sessions.Sort((a, b) => string.CompareOrdinal(a.startedUtc, b.startedUtc));
 
-        if (index.sessions.Count > 0)
+        // An existing index.json is replaced even with an empty list, or one that lists sessions
+        // whose files are gone would be rebuilt on every load.
+        if (index.sessions.Count > 0 || File.Exists(IndexPath(playerId)))
         {
             WriteAtomic(IndexPath(playerId), JsonUtility.ToJson(index, true));
             Debug.Log($"[SessionFiles] Rebuilt index.json for player {playerId} ({index.sessions.Count} sessions).");
         }
         return index;
+    }
+
+    /// <summary>Session files on disk for the player. .tmp and .corrupt files don't match.</summary>
+    private static int CountSessionFiles(string playerId)
+    {
+        string folder = SessionsFolder(playerId);
+        return Directory.Exists(folder) ? Directory.GetFiles(folder, "*.json").Length : 0;
+    }
+
+    /// <summary>Renames an unreadable session file to .json.corrupt (same idea as
+    /// profiles.json.corrupt). If the rename fails it's left alone: the worst case is that the
+    /// index is rebuilt on every load, with no data lost.</summary>
+    private static void SetAside(string path)
+    {
+        string corrupt = path + ".corrupt";
+        try
+        {
+            File.Move(path, corrupt);
+            Debug.LogWarning($"[SessionFiles] Session file {Path.GetFileName(path)} can't be read — " +
+                             $"renamed to {Path.GetFileName(corrupt)} and left out of history.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[SessionFiles] Session file {Path.GetFileName(path)} can't be read, and " +
+                             $"setting it aside failed ({e.Message}) — left as is.");
+        }
     }
 
     public static SessionSummary Summarize(SessionRecord session, string file)

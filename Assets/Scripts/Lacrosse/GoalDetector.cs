@@ -171,8 +171,9 @@ public class GoalDetector : MonoBehaviour
             }
             else
             {
+                string lastHit = _launcher != null ? _launcher.LastHitName ?? "nothing" : "unknown";
                 Debug.Log($"[GoalDetector] Miss — ball crossed plane outside gate at " +
-                          $"({crossingPos.x:F2}, {crossingPos.y:F2})");
+                          $"({crossingPos.x:F2}, {crossingPos.y:F2}), last hit: {lastHit}");
             }
 
             OnPlaneCrossed?.Invoke(crossingPos);

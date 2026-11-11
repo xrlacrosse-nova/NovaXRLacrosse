@@ -201,13 +201,13 @@ public class SessionSummarySpeaker : MonoBehaviour
         if (TryToughestCorner(current, minCornerShots, out Quadrant toughest))
         {
             int q = (int)toughest;
-            text.Append($" {ShotHeatmapRecorder.PositionName(toughest)} was toughest, " +
+            text.Append($" {QuadrantMath.PositionName(toughest)} was toughest, " +
                         $"{current.savesPerQuadrant[q]} of {current.shotsPerQuadrant[q]}.");
         }
         else if (TryPerfectCorner(current, minCornerShots, out Quadrant best))
         {
             int q = (int)best;
-            text.Append($" {ShotHeatmapRecorder.PositionName(best)}, " +
+            text.Append($" {QuadrantMath.PositionName(best)}, " +
                         $"{current.savesPerQuadrant[q]} of {current.shotsPerQuadrant[q]}.");
         }
 
@@ -287,7 +287,7 @@ public class SessionSummarySpeaker : MonoBehaviour
             }
 
             if (streak >= MinTrendSessions)
-                return $"{ShotHeatmapRecorder.PositionName(corner)} has been lowest for {streak} sessions.";
+                return $"{QuadrantMath.PositionName(corner)} has been lowest for {streak} sessions.";
         }
 
         // This session's save % vs. the average of the previous ones in the trend window.

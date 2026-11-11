@@ -622,9 +622,9 @@ public class SettingsPage : MonoBehaviour
             ? $"Last session: {Percent(t.saves, t.shots)} saved"
             : $"Last {t.sessions} sessions: {Percent(t.saves, t.shots)} saved";
         if (t.hasBest)
-            line += $"   Best: {ShotHeatmapRecorder.PositionName(t.best)} {Mathf.RoundToInt(t.bestRate * 100f)}%";
+            line += $"   Best: {QuadrantMath.PositionName(t.best)} {Mathf.RoundToInt(t.bestRate * 100f)}%";
         if (t.hasWorst)
-            line += $"   Worst: {ShotHeatmapRecorder.PositionName(t.worst)} {Mathf.RoundToInt(t.worstRate * 100f)}%";
+            line += $"   Worst: {QuadrantMath.PositionName(t.worst)} {Mathf.RoundToInt(t.worstRate * 100f)}%";
         return line;
     }
 
@@ -752,10 +752,10 @@ public class SettingsPage : MonoBehaviour
     /// <summary>DIFFICULTY column on the right half of the Main page: one pick-one row per level.
     /// Left out entirely when there's no DifficultySelector, so the page can ship without it.
     /// Returns the y just below it (the column's top when it's left out).</summary>
-    private float BuildDifficultyColumn(float x, float columnWidth)
+    private void BuildDifficultyColumn(float x, float columnWidth)
     {
         float y = gap * 2f;
-        if (difficulty == null || difficulty.Levels == null) return y;
+        if (difficulty == null || difficulty.Levels == null) return;
 
         CreateLabel(_mainPage, "DIFFICULTY", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.4f),
                     UiPalette.Chalk, TextAlignmentOptions.Left);
@@ -778,7 +778,6 @@ public class SettingsPage : MonoBehaviour
         _difficultyMessage = CreateLabel(_mainPage, "", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.2f),
                                          UiPalette.Smoke, TextAlignmentOptions.Left);
         RefreshDifficultyRows();
-        return y + fontSize * 1.2f + gap;
     }
 
     /// <summary>Row click. A refused change (session running, level missing) says so on the

@@ -7,10 +7,9 @@ using UnityEngine;
 /// values onto the RandomLauncher and CrowdAmbience. The choice is fixed: it never changes based
 /// on how the goalie does. See Plans/Current/Difficulty_Progression_Plan.md.
 ///   - Warm-up is picked like any level. Its sessions aren't recorded and its shots go to the
-///     corners in a fixed order (RandomLauncher.IsWarmUp). If the scene's saved Levels list has
-///     no Warm-up entry (it was saved before Warm-up existed), one is added at the top at
-///     runtime, copied from High school with WarmUpShots shots. Add it to the list in the
-///     Inspector to tune it.
+///     corners in a fixed order (RandomLauncher.IsWarmUp). It must be an entry in the Levels
+///     list like the others (a warning is logged at startup if it's missing). Warm-up is never
+///     saved as a player's level (Session_Robustness_Plan.md, P3).
 ///   - Picked on the settings page's DIFFICULTY column (SettingsPage calls SetDifficulty), or
 ///     with this component's context menu in the Editor. No UI of its own.
 ///   - Refused while a session is running (the page is hidden then anyway).
@@ -51,10 +50,6 @@ public class DifficultySelector : MonoBehaviour
     private const string PrefsKey = "Difficulty.Selected";
 
     private bool _loaded;
-    private bool _warmUpChecked;
-
-    /// <summary>Shots in the Warm-up level added at runtime: 3 to each corner.</summary>
-    private const int WarmUpShots = 12;
 
     /// <summary>Fired after a new difficulty is applied (and once at startup).</summary>
     public event Action<Difficulty> OnDifficultyChanged;
@@ -73,14 +68,7 @@ public class DifficultySelector : MonoBehaviour
     /// <summary>The current level's display name, or "" if it isn't in the list.</summary>
     public string SelectedName => FindLevel(Selected)?.displayName ?? "";
 
-    public IReadOnlyList<DifficultyLevel> Levels
-    {
-        get
-        {
-            EnsureWarmUpLevel();
-            return levels;
-        }
-    }
+    public IReadOnlyList<DifficultyLevel> Levels => levels;
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -98,6 +86,9 @@ public class DifficultySelector : MonoBehaviour
             players = FindFirstObjectByType<PlayerProfileStore>();
 
         WarnAboutDuplicates();
+        if (FindLevel(Difficulty.WarmUp) == null)
+            Debug.LogWarning("[DifficultySelector] No Warm-up in the Levels list — it won't be offered. Add a " +
+                             "Warm-up entry in the Inspector (e.g. High school's values with 12 shots).");
         LoadSelection();
     }
 
@@ -132,32 +123,54 @@ public class DifficultySelector : MonoBehaviour
             selected = level.difficulty;
         }
 
+        // First run with profiles: the selected player takes on the level they're starting at,
+        // but never Warm-up (it isn't saved), so a player starting on it gets High school.
+        bool firstRun = players != null && !TryParseLevel(players.CurrentPlayer.difficulty, out _);
+        if (firstRun && rememberSelection && selected == Difficulty.WarmUp)
+        {
+            DifficultyLevel remembered = FirstRememberedLevel();
+            if (remembered != null)
+            {
+                level = remembered;
+                selected = remembered.difficulty;
+            }
+        }
+
         level.ApplyTo(launcher, crowd);
         Debug.Log($"[DifficultySelector] Starting on {level.displayName}.");
 
-        // First run with profiles: the selected player takes on the level they're starting at.
-        if (players != null && !TryParseLevel(players.CurrentPlayer.difficulty, out _))
+        if (firstRun)
             SaveSelection();
 
         OnDifficultyChanged?.Invoke(selected);
     }
 
     /// <summary>Switches to the new player's level. One who never picked a level keeps the
-    /// current one, which becomes theirs.</summary>
+    /// current one, which becomes theirs — except Warm-up, which is never saved: they get
+    /// High school instead, so Warm-up doesn't carry over to the new player.</summary>
     private void HandlePlayerChanged(PlayerProfile player)
     {
         if (!rememberSelection || player == null) return;
 
-        if (!TryParseLevel(player.difficulty, out Difficulty theirs))
+        bool hasSaved = TryParseLevel(player.difficulty, out Difficulty theirs);
+        if (!hasSaved)
         {
-            SaveSelection();
-            return;
+            if (selected != Difficulty.WarmUp)
+            {
+                SaveSelection();
+                return;
+            }
+            DifficultyLevel remembered = FirstRememberedLevel();
+            if (remembered == null) return;
+            theirs = remembered.difficulty;
         }
         if (theirs == selected) return;
 
         selected = theirs;
         DifficultyLevel level = FindLevel(theirs);
         level.ApplyTo(launcher, crowd);
+        if (!hasSaved)
+            SaveSelection();
         Debug.Log($"[DifficultySelector] {player.displayName} plays on {level.displayName}.");
         OnDifficultyChanged?.Invoke(theirs);
     }
@@ -195,7 +208,6 @@ public class DifficultySelector : MonoBehaviour
     /// <summary>The first level with this difficulty (duplicates after it are ignored).</summary>
     public DifficultyLevel FindLevel(Difficulty difficulty)
     {
-        EnsureWarmUpLevel();
         if (levels == null) return null;
         foreach (DifficultyLevel level in levels)
         {
@@ -206,42 +218,6 @@ public class DifficultySelector : MonoBehaviour
     }
 
     // ── Private helpers ───────────────────────────────────────────
-
-    /// <summary>Once: puts a Warm-up level at the top of the list if the scene's saved list
-    /// doesn't have one, copied from High school (or the code defaults) with WarmUpShots shots.
-    /// Runtime only, so it's never saved into the scene. Called lazily, since other scripts may
-    /// read the list before this Awake runs.</summary>
-    private void EnsureWarmUpLevel()
-    {
-        if (_warmUpChecked) return;
-        _warmUpChecked = true;
-
-        if (levels == null)
-            levels = new List<DifficultyLevel>();
-        foreach (DifficultyLevel level in levels)
-        {
-            if (level != null && level.difficulty == Difficulty.WarmUp)
-                return;
-        }
-
-        DifficultyLevel source = null;
-        foreach (DifficultyLevel level in levels)
-        {
-            if (level != null && level.difficulty == Difficulty.HighSchool)
-            {
-                source = level;
-                break;
-            }
-        }
-        if (source == null)
-            source = DefaultLevels().Find(l => l.difficulty == Difficulty.HighSchool);
-
-        levels.Insert(0, new DifficultyLevel(Difficulty.WarmUp, "Warm-up", source.launchSpeed,
-                                             source.launchSpeedVariance, source.edgePadding,
-                                             source.quadrantDepth, WarmUpShots, source.crowdVolume));
-        Debug.Log("[DifficultySelector] No Warm-up in the Levels list — added one from High school " +
-                  $"({source.launchSpeed} m/s, {WarmUpShots} shots).");
-    }
 
     /// <summary>Loads the saved choice once (if Remember Selection is on and it's still in the
     /// list): the selected player's, else the shared PlayerPrefs one.</summary>
@@ -259,10 +235,13 @@ public class DifficultySelector : MonoBehaviour
     }
 
     /// <summary>Saves the current choice: on the selected player with a store, else in the
-    /// shared PlayerPrefs key. Nothing when Remember Selection is off.</summary>
+    /// shared PlayerPrefs key. Nothing when Remember Selection is off, or for Warm-up: its
+    /// sessions aren't recorded, so a remembered Warm-up would silently stop recording every
+    /// session after a relaunch (Session_Robustness_Plan.md, P3).</summary>
     private void SaveSelection()
     {
         if (!rememberSelection) return;
+        if (selected == Difficulty.WarmUp) return;
 
         if (players != null)
         {
@@ -274,15 +253,32 @@ public class DifficultySelector : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    /// <summary>A stored difficulty name that's still in the Levels list.</summary>
+    /// <summary>A stored difficulty name that's still in the Levels list. A stored Warm-up
+    /// (written before it stopped being saved) counts as nothing saved.</summary>
     private bool TryParseLevel(string stored, out Difficulty difficulty)
     {
-        return Enum.TryParse(stored, out difficulty) && FindLevel(difficulty) != null;
+        return Enum.TryParse(stored, out difficulty) && difficulty != Difficulty.WarmUp &&
+               FindLevel(difficulty) != null;
+    }
+
+    /// <summary>The level a player gets when nothing is saved and Warm-up is selected: High
+    /// school, or the first non-warm-up level if High school isn't in the list.</summary>
+    private DifficultyLevel FirstRememberedLevel()
+    {
+        DifficultyLevel highSchool = FindLevel(Difficulty.HighSchool);
+        if (highSchool != null) return highSchool;
+        if (levels == null) return null;
+
+        foreach (DifficultyLevel level in levels)
+        {
+            if (level != null && level.difficulty != Difficulty.WarmUp)
+                return level;
+        }
+        return null;
     }
 
     private DifficultyLevel FirstLevel()
     {
-        EnsureWarmUpLevel();
         if (levels == null) return null;
         foreach (DifficultyLevel level in levels)
         {

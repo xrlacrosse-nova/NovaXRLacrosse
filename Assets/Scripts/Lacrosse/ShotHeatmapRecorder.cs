@@ -339,6 +339,16 @@ public class ShotHeatmapRecorder : MonoBehaviour
         RebuildDisplay();
     }
 
+    /// <summary>On a player switch: drops the session that already ended (it belongs to the
+    /// previous player) and hides the board, so the new player isn't shown someone else's
+    /// "This session" line and dots (Session_Robustness_Plan.md, P4). Does nothing while a
+    /// session is still being recorded. Call before LoadHistory with the new player's shots.</summary>
+    public void DropEndedSession()
+    {
+        if (!_committed) return;
+        ClearRecordedShots();
+    }
+
     /// <summary>Replaces the All Sessions history, e.g. with a player's saved shots
     /// (Player_Session_History_Plan.md). Oldest first; each shot's session index sets how much
     /// it fades. A session still being recorded is kept and stays the newest. A session that
@@ -580,7 +590,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
                 if (cornerLabels[i] == null) continue;
 
                 Quadrant q = (Quadrant)i;
-                cornerLabels[i].text = $"{PositionName(q)}\n{Count(q)}";
+                cornerLabels[i].text = $"{QuadrantMath.PositionName(q)}\n{Count(q)}";
                 cornerLabels[i].alignment = CornerAlignment(q);
                 cornerLabels[i].color = UiPalette.Chalk;
             }
@@ -592,7 +602,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
             string Corner(Quadrant q)
             {
                 int index = (int)q;
-                return $"{PositionName(q)}: {saves[index]}/{totals[index]}";
+                return $"{QuadrantMath.PositionName(q)}: {saves[index]}/{totals[index]}";
             }
 
             // Level inline here, so the corner lines below keep their place.
@@ -603,19 +613,6 @@ public class ShotHeatmapRecorder : MonoBehaviour
                 trendLine +
                 $"{Corner(Quadrant.TopLeft)}  ·  {Corner(Quadrant.TopRight)}\n" +
                 $"{Corner(Quadrant.BottomLeft)}  ·  {Corner(Quadrant.BottomRight)}";
-        }
-    }
-
-    /// <summary>Plain position name for a corner, as the goalie sees the goal. Shared with the
-    /// settings page's History trend line, so both name corners the same way.</summary>
-    public static string PositionName(Quadrant quadrant)
-    {
-        switch (quadrant)
-        {
-            case Quadrant.TopLeft: return "Top left";
-            case Quadrant.TopRight: return "Top right";
-            case Quadrant.BottomLeft: return "Bottom left";
-            default: return "Bottom right";
         }
     }
 

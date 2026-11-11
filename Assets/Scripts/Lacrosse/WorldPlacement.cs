@@ -489,18 +489,13 @@ public class WorldPlacement : MonoBehaviour
         }
     }
 
-    /// <summary>MagicLeapController.Instance throws without an InputActionManager in the scene
-    /// (same handling as ControllerRayPointer); retried every few seconds.</summary>
+    /// <summary>No controller without an InputActionManager in the scene (ControllerAccess);
+    /// retried every few seconds.</summary>
     private void TryConnectController()
     {
         _nextConnectAttempt = Time.time + ConnectRetrySeconds;
-        try
+        if (!ControllerAccess.TryGetController(out _controller))
         {
-            _controller = MagicLeapController.Instance;
-        }
-        catch (NullReferenceException)
-        {
-            _controller = null;
             if (!_warnedNoController)
             {
                 Debug.LogWarning("[WorldPlacement] No MagicLeapController input — Menu-hold recenter off " +

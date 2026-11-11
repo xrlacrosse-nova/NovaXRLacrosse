@@ -128,21 +128,19 @@ public class ControllerRayPointer : MonoBehaviour
     }
 
     /// <summary>
-    /// MagicLeapController.Instance throws if there's no InputActionManager in the scene yet (or
-    /// at all, e.g. Editor testing without the ML rig). Retried from Update until it connects,
-    /// so a rig that comes up after this component still gets a working ray.
+    /// There's no controller if there's no InputActionManager in the scene yet (or at all, e.g.
+    /// Editor testing without the ML rig; see ControllerAccess). Retried from Update until it
+    /// connects, so a rig that comes up after this component still gets a working ray.
     /// </summary>
     private void TryConnectController()
     {
         _nextConnectAttempt = Time.time + ConnectRetrySeconds;
-        try
+        if (ControllerAccess.TryGetController(out _controller))
         {
-            _controller = MagicLeapController.Instance;
             _controller.TriggerPressed += HandleTriggerPressed;
         }
-        catch (System.NullReferenceException)
+        else
         {
-            _controller = null;
             if (!_warnedUnavailable)
             {
                 Debug.LogWarning("[ControllerRayPointer] No MagicLeapController input available (no " +
