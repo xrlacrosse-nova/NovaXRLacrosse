@@ -2284,6 +2284,7 @@ MonoBehaviour:
   maxPreStartDelay: 5
   minShotInterval: 3
   maxShotInterval: 5
+  maxShotLifetime: 4
   shooterAnimation: {fileID: 229782168}
   countdownText: {fileID: 1065477489}
   readyLabel: 
@@ -2464,8 +2465,16 @@ MonoBehaviour:
     quadrantDepth: 0.8
     shotsPerSession: 12
     crowdVolume: 1
-  selected: 1
-  rememberSelection: 1
+  - difficulty: 3
+    displayName: Warm-up
+    launchSpeed: 16
+    launchSpeedVariance: 1
+    edgePadding: 0.02
+    quadrantDepth: 0.5
+    shotsPerSession: 12
+    crowdVolume: 0.3
+  selected: 3
+  rememberSelection: 0
   launcher: {fileID: 0}
   crowd: {fileID: 0}
   players: {fileID: 0}
