@@ -339,6 +339,16 @@ public class ShotHeatmapRecorder : MonoBehaviour
         RebuildDisplay();
     }
 
+    /// <summary>On a player switch: drops the session that already ended (it belongs to the
+    /// previous player) and hides the board, so the new player isn't shown someone else's
+    /// "This session" line and dots (Session_Robustness_Plan.md, P4). Does nothing while a
+    /// session is still being recorded. Call before LoadHistory with the new player's shots.</summary>
+    public void DropEndedSession()
+    {
+        if (!_committed) return;
+        ClearRecordedShots();
+    }
+
     /// <summary>Replaces the All Sessions history, e.g. with a player's saved shots
     /// (Player_Session_History_Plan.md). Oldest first; each shot's session index sets how much
     /// it fades. A session still being recorded is kept and stays the newest. A session that
