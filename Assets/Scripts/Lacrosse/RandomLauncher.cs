@@ -121,6 +121,13 @@ public class RandomLauncher : MonoBehaviour
     [Min(0f)]
     public float maxShotInterval = 10f;
 
+    [Tooltip("Safety net: if a session shot hasn't despawned this many seconds after launch (stuck on " +
+             "a collider, deflected up, bounce on), it's despawned anyway so the session can't hang. " +
+             "Must be longer than the slowest normal shot: flight + Despawn Delay, or flight + Save " +
+             "Despawn Delay. Raise it if a normal shot ever logs the timeout warning.")]
+    [Min(0.5f)]
+    public float maxShotLifetime = 4f;
+
     [Header("Shooter Animation")]
     [Tooltip("Optional. If assigned, each session shot plays the shooter's shooting animation and the " +
              "ball launches on its release frame. Leave empty to launch instantly.")]
@@ -163,6 +170,8 @@ public class RandomLauncher : MonoBehaviour
     // session state
     private bool _sessionRunning = false;
     private int _shotsFiredThisSession = 0;
+    private Coroutine _shotWatchdog;    // running from a session shot's launch until it despawns
+    private string _lastHitName;        // last collider the ball touched this shot; null = none
 
     // warm-up: the order its shots go in, and whether the running session is one
     private static readonly Quadrant[] WarmUpOrder =
@@ -211,6 +220,10 @@ public class RandomLauncher : MonoBehaviour
 
     /// <summary>Release speed (m/s) of the most recent shot, after the per-shot variance.</summary>
     public float LastLaunchSpeed { get; private set; }
+
+    /// <summary>Name of the last collider the ball touched since its launch, or null if none.
+    /// Used in warnings about shots that end without a Save or Goal.</summary>
+    public string LastHitName => _lastHitName;
 
     /// <summary>The Unity gravity on the ball right now: scaled by shotGravityScale on its way to
     /// the goal, otherwise full, and zero with Use Unity Gravity off. Anything predicting the
@@ -349,6 +362,7 @@ public class RandomLauncher : MonoBehaviour
     /// reached, then ends the session.</summary>
     private void HandleDespawned()
     {
+        StopShotWatchdog();
         if (!_sessionRunning) return;
 
         if (_shotsFiredThisSession >= shotsPerSession)
@@ -390,6 +404,9 @@ public class RandomLauncher : MonoBehaviour
     // shot below its aim point, which would otherwise be hard to trace.
     void OnCollisionEnter(Collision collision)
     {
+        // Before the early return, so every hit is kept, not just the first one.
+        _lastHitName = collision.gameObject.name;
+
         if (!_reducedGravity) return;
 
         _reducedGravity = false;
@@ -557,6 +574,40 @@ public class RandomLauncher : MonoBehaviour
         LaunchToward(_pendingQuadrant);
     }
 
+    /// <summary>The session only moves on when the ball despawns. If that never happens (ball
+    /// resting on a collider above the floor, deflected upward under reduced gravity, or
+    /// FloorBoundary.bounceOnFloor on), despawn it anyway after maxShotLifetime, through the
+    /// normal OnDespawned path. A shot with no Save or Goal is left out of the tally: the
+    /// recorders already drop an open shot on despawn (Session_Robustness_Plan.md, P2).</summary>
+    private IEnumerator ShotWatchdog()
+    {
+        yield return new WaitForSeconds(maxShotLifetime);
+        _shotWatchdog = null;
+
+        string hit = _lastHitName ?? "nothing";
+        if (_goalDetector.GoalScored || _goalDetector.Saved)
+        {
+            Debug.LogWarning($"[RandomLauncher] Ball didn't despawn within {maxShotLifetime}s of launch " +
+                             $"(its {(_goalDetector.Saved ? "Save" : "Goal")} is already counted). Stuck at " +
+                             $"{transform.position}, last hit: {hit}. Despawning it so the session continues.");
+        }
+        else
+        {
+            Debug.LogWarning($"[RandomLauncher] Shot had no Save or Goal within {maxShotLifetime}s of launch — " +
+                             $"left out of the tally. Ball at {transform.position}, last hit: {hit}. " +
+                             "Despawning it so the session continues.");
+        }
+
+        _floorBoundary.DespawnAfter(0f, freezeInPlace: true);
+    }
+
+    private void StopShotWatchdog()
+    {
+        if (_shotWatchdog == null) return;
+        StopCoroutine(_shotWatchdog);
+        _shotWatchdog = null;
+    }
+
     /// <summary>Called by ShooterAnimationController on the shooting clip's release frame.
     /// Ignores releases no session shot is waiting on (e.g. its Test Shot context menu).</summary>
     private void HandleShooterRelease()
@@ -679,6 +730,12 @@ public class RandomLauncher : MonoBehaviour
 
         _ballFlight?.BeginFlight(spin);
         _goalDetector.OnBallLaunched();
+
+        // Only session shots: a one-off LaunchBall() outside a session has nothing to hang.
+        _lastHitName = null;
+        StopShotWatchdog();
+        if (_sessionRunning && _floorBoundary != null)
+            _shotWatchdog = StartCoroutine(ShotWatchdog());
 
         float speed = launchVelocity.magnitude;
         float angle = speed > 0.001f ? Mathf.Asin(Mathf.Clamp(launchVelocity.y / speed, -1f, 1f)) * Mathf.Rad2Deg : 0f;
