@@ -138,6 +138,11 @@ public class GoalieSaveZone : MonoBehaviour
             return;
         }
 
+        if (GetComponents<Collider>().Length > 1)
+            Debug.LogWarning($"[GoalieSaveZone] More than one Collider on this GameObject — only " +
+                             $"{_zoneCollider.GetType().Name} is used as the save area. Remove the others " +
+                             "(e.g. a test BoxCollider) and keep the MeshCollider.");
+
         if (_zoneCollider is MeshCollider meshCol && !meshCol.convex)
         {
             Debug.LogWarning("[GoalieSaveZone] The MeshCollider isn't Convex — tick Convex. A non-convex mesh " +
