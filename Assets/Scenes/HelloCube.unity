@@ -2090,6 +2090,7 @@ MonoBehaviour:
   difficulty: {fileID: 0}
   players: {fileID: 0}
   history: {fileID: 0}
+  placement: {fileID: 0}
 --- !u!1 &866954152
 GameObject:
   m_ObjectHideFlags: 0
@@ -3314,9 +3315,10 @@ MonoBehaviour:
   placeOnStartup: 1
   replaceOnOriginChange: 1
   originChangeCooldown: 3
-  menuHoldRecenter: 1
-  menuHoldSeconds: 1
-  lookAheadPrompt: Please look Straight Ahead
+  restartXrOnRecenter: 1
+  restartSettleSeconds: 1
+  restartTimeoutSeconds: 10
+  lookAheadPrompt: Please stand in an open space and look straight ahead
   readyPrompt: Ready
   promptSpeechRate: 0.8
   repromptSeconds: 8
@@ -3324,9 +3326,6 @@ MonoBehaviour:
   levelPitchMax: 25
   steadyMaxDegreesPerSecond: 15
   steadySeconds: 1
-  minPlausibleEyeHeight: 0.4
-  maxPlausibleEyeHeight: 2.4
-  fallbackEyeHeight: 1.7
   logPlacement: 1
   startupLogSeconds: 20
   editorSkipHeadChecks: 1
