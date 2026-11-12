@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -15,6 +16,15 @@ using UnityEngine.InputSystem;
 ///   2. Add a Rigidbody: Is Kinematic on, Use Gravity off. (A moving collider without a
 ///      Rigidbody is treated as static; the ball's own Rigidbody is what makes trigger events fire.)
 ///   3. Add this component to the same GameObject. Ball can be left empty — it's auto-found.
+///   4. Keep only that one Collider on the GameObject (remove any test BoxCollider).
+///   5. Pocket (Future_Plan/Reviewed/Stick_Pocket_Save_Zone_Plan.md): at Play start the
+///      MeshCollider's mesh is swapped for a built volume: the oval face plus the sidewalls and
+///      the bag behind it, so a ball into the bag or off the sidewall of a twisted/tilted head
+///      still saves. The visible oval isn't touched, and the front of the head doesn't grow.
+///      Press Play, select the object and check the green gizmo from the side: the bulge must be
+///      on the net side (away from the shooter). If not, flip Pocket Side. Tune the depths live
+///      in Play mode, then re-enter them after stopping (Play-mode changes are lost).
+///      Build Pocket Volume off = the flat oval collider, as before.
 ///
 /// How a save is found: each physics step, a sphere the size of the ball (plus saveMargin) is
 /// swept along the ball's path since the last step and tested against this collider, so a ball
@@ -48,6 +58,34 @@ public class GoalieSaveZone : MonoBehaviour
              "Leave on unless debugging.")]
     public bool sweepStickMotion = true;
 
+    public enum PocketSide { Plus = 1, Minus = -1 }
+
+    [Header("Pocket")]
+    [Tooltip("Give the save area depth: the oval face plus the sidewalls and the bag behind it, built " +
+             "at Play start onto this MeshCollider. Off = the flat oval collider exactly as it is.")]
+    public bool buildPocketVolume = true;
+
+    [Tooltip("How far the sidewalls stand behind the face, all the way around the rim, in meters.")]
+    [Range(0f, 0.1f)]
+    public float sidewallDepth = 0.04f;
+
+    [Tooltip("How deep the bag hangs behind the face at its deepest point, in meters.")]
+    [Range(0f, 0.2f)]
+    public float pocketDepth = 0.09f;
+
+    [Tooltip("Where the bag's deepest point sits along the head (local z, the long axis), in meters. " +
+             "The oval runs about -0.18 to +0.24; 0.03 is its middle.")]
+    [Range(-0.2f, 0.25f)]
+    public float pocketCenter = 0.03f;
+
+    [Tooltip("Size of the bottom of the bag relative to the face (1 = as big as the face).")]
+    [Range(0.05f, 1f)]
+    public float pocketSize = 0.5f;
+
+    [Tooltip("Which side of the face the net hangs on. Check the gizmo in Play mode: the bulge must " +
+             "be on the net side (away from the shooter). Flip if it's on the shooter's side.")]
+    public PocketSide pocketSide = PocketSide.Plus;
+
     [Header("Debug")]
     [Tooltip("Log each registered save (where on the head it hit), and on each goal how close the " +
              "ball came to the head. GoalDetector always logs its own SAVE / GOAL line.")]
@@ -78,12 +116,21 @@ public class GoalieSaveZone : MonoBehaviour
     private float _closestCenterDistance = float.PositiveInfinity;
     private bool _canMeasureApproach = true;  // ClosestPoint needs a primitive or convex mesh
 
+    // Pocket volume: the visible oval it's built from, the built mesh, and a flag set by
+    // OnValidate so Inspector tweaks are applied on the next physics step (not inside OnValidate).
+    private const int MaxOutlinePoints = 64;  // keeps the convex hull well under PhysX's 255 limit
+    private MeshCollider _meshCollider;
+    private Mesh _faceMesh;
+    private Mesh _pocketMesh;
+    private bool _pocketDirty = false;
+
     // ── Lifecycle ─────────────────────────────────────────────────
 
     void Awake()
     {
         _zoneCollider = GetComponent<Collider>();
         ValidateSetup();
+        SetupPocket();
     }
 
     void Start()
@@ -110,6 +157,16 @@ public class GoalieSaveZone : MonoBehaviour
     {
         if (ball != null)
             ball.OnGoalScored -= HandleGoalScored;
+
+        if (_pocketMesh != null)
+            Destroy(_pocketMesh);
+    }
+
+    void OnValidate()
+    {
+        // Rebuilt on the next physics step, so a Pocket tweak in Play mode applies live.
+        if (Application.isPlaying)
+            _pocketDirty = true;
     }
 
     /// <summary>The ball's world radius from its SphereCollider, so the sweep is exactly as wide
@@ -179,6 +236,12 @@ public class GoalieSaveZone : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (_pocketDirty)
+        {
+            _pocketDirty = false;
+            RebuildPocket();
+        }
+
         if (!useSweepCheck || _zoneCollider == null) return;
 
         // Only track the ball while a shot is live. Clearing this between shots also stops the
@@ -391,6 +454,201 @@ public class GoalieSaveZone : MonoBehaviour
         }
 
         return saved;
+    }
+
+    // ── Pocket volume ─────────────────────────────────────────────
+
+    /// <summary>Remembers the oval the pocket is built from (the visible mesh, or the collider's
+    /// own mesh if there's no MeshFilter) and builds the volume.</summary>
+    private void SetupPocket()
+    {
+        _meshCollider = _zoneCollider as MeshCollider;
+        if (_meshCollider == null)
+        {
+            if (buildPocketVolume && _zoneCollider != null)
+                Debug.LogWarning($"[GoalieSaveZone] The save area is a {_zoneCollider.GetType().Name}, not a " +
+                                 "MeshCollider — the pocket volume can't be built. Use the oval MeshCollider.");
+            return;
+        }
+
+        MeshFilter filter = GetComponent<MeshFilter>();
+        _faceMesh = filter != null && filter.sharedMesh != null ? filter.sharedMesh : _meshCollider.sharedMesh;
+        RebuildPocket();
+    }
+
+    /// <summary>Puts the face + sidewall + bag volume on the MeshCollider, or the plain oval if
+    /// Build Pocket Volume is off. Play mode only: in Edit mode it would write a generated mesh
+    /// into the scene.</summary>
+    [ContextMenu("Rebuild pocket")]
+    public void RebuildPocket()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.Log("[GoalieSaveZone] The pocket is built in Play mode only.");
+            return;
+        }
+
+        if (_meshCollider == null || _faceMesh == null) return;
+
+        Mesh built = null;
+        if (buildPocketVolume)
+        {
+            if (!_faceMesh.isReadable)
+                Debug.LogWarning("[GoalieSaveZone] The oval mesh isn't readable (Read/Write off) — can't build " +
+                                 "the pocket, using the flat oval.");
+            else
+                built = BuildPocketMesh();
+        }
+
+        _meshCollider.sharedMesh = built != null ? built : _faceMesh;
+
+        if (_pocketMesh != null)
+            Destroy(_pocketMesh);
+        _pocketMesh = built;
+
+        if (showDebugLogs)
+        {
+            Debug.Log(built != null
+                ? $"[GoalieSaveZone] Pocket built: sidewall {sidewallDepth * 100f:F1} cm, bag {pocketDepth * 100f:F1} cm " +
+                  $"at z {pocketCenter * 100f:F1} cm, size {pocketSize:F2}, side {pocketSide}"
+                : "[GoalieSaveZone] Pocket off — save area is the flat oval.");
+        }
+    }
+
+    /// <summary>Builds the pocket as three rings of the oval's outline, all in this object's local
+    /// space: the front of the face (unchanged), the same outline pushed back by sidewallDepth
+    /// toward pocketSide, and the outline shrunk by pocketSize around pocketCenter, pushed back by
+    /// pocketDepth. Capped and joined into a closed mesh; the collider takes its convex hull, which
+    /// fills the bag's hollow (a ball into the bag is a save).</summary>
+    private Mesh BuildPocketMesh()
+    {
+        Vector3[] faceVerts = _faceMesh.vertices;
+        if (faceVerts.Length < 3) return null;
+
+        // The face's thinnest axis is its normal (y today); the longest of the other two runs
+        // along the head (z today); the last one is across it.
+        Bounds b = _faceMesh.bounds;
+        Vector3 size = b.size;
+        int n = 0;
+        for (int i = 1; i < 3; i++)
+            if (size[i] < size[n]) n = i;
+        int l = (n + 1) % 3, w = (n + 2) % 3;
+        if (size[w] > size[l]) (l, w) = (w, l);
+
+        // Meters to local units, so a later rescale doesn't silently change the depths.
+        Vector3 scale = transform.lossyScale;
+        float scaleN = Mathf.Max(Mathf.Abs(scale[n]), 1e-6f);
+        float scaleL = Mathf.Max(Mathf.Abs(scale[l]), 1e-6f);
+
+        // The face's outline seen face-on (x = across, y = along).
+        var projected = new List<Vector2>(faceVerts.Length);
+        foreach (Vector3 v in faceVerts)
+            projected.Add(new Vector2(v[w], v[l]));
+
+        List<Vector2> outline = ConvexHull2D(projected);
+        if (outline.Count < 3) return null;
+        outline = Downsample(outline, MaxOutlinePoints);
+        int m = outline.Count;
+
+        Vector2 centroid = Vector2.zero;
+        foreach (Vector2 p in outline) centroid += p;
+        centroid /= m;
+
+        int side = (int)pocketSide;
+        float frontN = side > 0 ? b.min[n] : b.max[n];  // shooter-side surface: stays where it is
+        float backN = side > 0 ? b.max[n] : b.min[n];   // net-side surface: the pocket grows from here
+        float sidewallN = backN + side * sidewallDepth / scaleN;
+        float bagN = backN + side * pocketDepth / scaleN;
+
+        Vector2 bagCenter = new Vector2(centroid.x, Mathf.Clamp(pocketCenter / scaleL, b.min[l], b.max[l]));
+
+        var verts = new Vector3[3 * m];
+        for (int i = 0; i < m; i++)
+        {
+            verts[i] = ToLocal(outline[i], frontN, n, l, w);
+            verts[m + i] = ToLocal(outline[i], sidewallN, n, l, w);
+            verts[2 * m + i] = ToLocal(bagCenter + (outline[i] - bagCenter) * pocketSize, bagN, n, l, w);
+        }
+
+        var tris = new List<int>(12 * m);
+        for (int i = 1; i < m - 1; i++)
+        {
+            tris.Add(0); tris.Add(i); tris.Add(i + 1);                     // front cap
+            tris.Add(2 * m); tris.Add(2 * m + i); tris.Add(2 * m + i + 1); // bag cap
+        }
+        for (int ring = 0; ring < 2; ring++)
+        {
+            for (int i = 0; i < m; i++)
+            {
+                int a = ring * m + i, c = ring * m + (i + 1) % m;
+                int d = (ring + 1) * m + (i + 1) % m, e = (ring + 1) * m + i;
+                tris.Add(a); tris.Add(c); tris.Add(d);
+                tris.Add(a); tris.Add(d); tris.Add(e);
+            }
+        }
+
+        // Wind every triangle outward (for the gizmo's shading; the collider doesn't care).
+        Vector3 middle = Vector3.zero;
+        foreach (Vector3 v in verts) middle += v;
+        middle /= verts.Length;
+        for (int t = 0; t < tris.Count; t += 3)
+        {
+            Vector3 v0 = verts[tris[t]], v1 = verts[tris[t + 1]], v2 = verts[tris[t + 2]];
+            if (Vector3.Dot(Vector3.Cross(v1 - v0, v2 - v0), (v0 + v1 + v2) / 3f - middle) < 0f)
+                (tris[t + 1], tris[t + 2]) = (tris[t + 2], tris[t + 1]);
+        }
+
+        var mesh = new Mesh { name = "Stick pocket save zone" };
+        mesh.SetVertices(verts);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    private static Vector3 ToLocal(Vector2 p, float normal, int n, int l, int w)
+    {
+        Vector3 v = default;
+        v[w] = p.x;
+        v[l] = p.y;
+        v[n] = normal;
+        return v;
+    }
+
+    private static float Cross(Vector2 o, Vector2 a, Vector2 b) =>
+        (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+    /// <summary>Convex outline of a set of 2D points, counter-clockwise (monotone chain).
+    /// Duplicate and in-line points are dropped.</summary>
+    private static List<Vector2> ConvexHull2D(List<Vector2> points)
+    {
+        points.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+        var hull = new List<Vector2>(points.Count + 1);
+
+        for (int pass = 0; pass < 2; pass++)
+        {
+            int start = hull.Count;
+            for (int k = 0; k < points.Count; k++)
+            {
+                Vector2 p = points[pass == 0 ? k : points.Count - 1 - k];
+                while (hull.Count >= start + 2 && Cross(hull[hull.Count - 2], hull[hull.Count - 1], p) <= 1e-10f)
+                    hull.RemoveAt(hull.Count - 1);
+                hull.Add(p);
+            }
+            hull.RemoveAt(hull.Count - 1);  // the last point is the first of the other half
+        }
+        return hull;
+    }
+
+    /// <summary>Evenly spaced subset of the outline, so a finely tessellated oval still cooks
+    /// into a small convex hull.</summary>
+    private static List<Vector2> Downsample(List<Vector2> outline, int max)
+    {
+        if (outline.Count <= max) return outline;
+        var result = new List<Vector2>(max);
+        for (int i = 0; i < max; i++)
+            result.Add(outline[i * outline.Count / max]);
+        return result;
     }
 
     // ── Gizmos ────────────────────────────────────────────────────
