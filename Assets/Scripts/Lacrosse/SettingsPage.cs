@@ -13,7 +13,9 @@ using UnityEngine.UI;
 ///   - Main: PLAYER column (one row per player, the selected one marked, "+ New player", and
 ///     Rename / Delete) and the DIFFICULTY column (one row per level, the current one marked)
 ///     when a DifficultySelector is in the scene. Without a PlayerProfileStore the player column
-///     is just "+ New player".
+///     is just "+ New player". Above View history, the FLOOR row ("FLOOR  +3 cm" and
+///     [-5] [-1] [+1] [+5]) nudges the world up/down by hand when a WorldPlacement is in the scene
+///     (Current_Plan/Floor_Bug_Plan.md).
 ///   - New player: on-screen keyboard and name field. Only shown while naming (or renaming) a player.
 ///   - History: the selected player's saved sessions, newest first, paged with older / newer,
 ///     and their recent trend. Clicking a session replays it on the heatmap and as path streaks
@@ -78,6 +80,9 @@ public class SettingsPage : MonoBehaviour
     [Tooltip("Leave empty to find the SessionHistory in the scene. None = no history button or page.")]
     public SessionHistory history;
 
+    [Tooltip("Leave empty to find the WorldPlacement in the scene. None = no FLOOR row.")]
+    public WorldPlacement placement;
+
     /// <summary>Name rules: 1–12 characters, A–Z, 0–9 and space, trimmed.</summary>
     public const int MaxNameLength = PlayerProfileStore.MaxNameLength;
 
@@ -99,6 +104,7 @@ public class SettingsPage : MonoBehaviour
     private readonly List<(Difficulty difficulty, RayButton button)> _difficultyRows =
         new List<(Difficulty, RayButton)>();
     private TextMeshProUGUI _difficultyMessage;
+    private TextMeshProUGUI _floorLabel;        // "FLOOR  +3 cm" (only with a WorldPlacement)
 
     // player column (only with a PlayerProfileStore)
     private RectTransform _playerRows;          // rebuilt when the list changes or scrolls
@@ -156,6 +162,9 @@ public class SettingsPage : MonoBehaviour
         if (history == null)
             history = FindFirstObjectByType<SessionHistory>();
 
+        if (placement == null)
+            placement = FindFirstObjectByType<WorldPlacement>();
+
         if (board == null)
             board = GetComponentInChildren<Canvas>(true);
         if (board == null)
@@ -204,6 +213,8 @@ public class SettingsPage : MonoBehaviour
             players.OnPlayerChanged += HandlePlayerChanged;
             players.OnPlayersChanged += HandlePlayersChanged;
         }
+        if (placement != null)
+            placement.OnFloorNudgeChanged += HandleFloorNudgeChanged;
     }
 
     void OnDisable()
@@ -220,6 +231,8 @@ public class SettingsPage : MonoBehaviour
             players.OnPlayerChanged -= HandlePlayerChanged;
             players.OnPlayersChanged -= HandlePlayersChanged;
         }
+        if (placement != null)
+            placement.OnFloorNudgeChanged -= HandleFloorNudgeChanged;
     }
 
     void Update()
@@ -263,6 +276,8 @@ public class SettingsPage : MonoBehaviour
         RebuildPlayerRows();
         RefreshViewHistoryLabel();
     }
+
+    void HandleFloorNudgeChanged(float _) => RefreshFloorLabel();
 
     private void SetShown(bool shown)
     {
@@ -697,12 +712,15 @@ public class SettingsPage : MonoBehaviour
             CreateButton(_mainPage, "+ New player", new Vector2(gap * 2f, y), new Vector2(columnWidth, keySize),
                          OpenNewPlayer);
 
-        BuildDifficultyColumn(w / 2f + gap, columnWidth);
+        float difficultyBottom = BuildDifficultyColumn(w / 2f + gap, columnWidth);
 
-        // Bottom of the right column, level with Rename / Delete.
+        // Bottom of the right column, level with Rename / Delete. The FLOOR row sits just above
+        // it (same place with or without View history).
+        float actionY = BoardHeight - gap * 2f - keySize;
+        BuildFloorRow(w / 2f + gap, columnWidth, actionY, difficultyBottom);
+
         if (players != null && history != null)
         {
-            float actionY = BoardHeight - gap * 2f - keySize;
             _viewHistoryButton = CreateButton(_mainPage, "View history", new Vector2(w / 2f + gap, actionY),
                                               new Vector2(columnWidth, keySize), OpenHistory);
             // "View <12 chars>'s history" can outgrow the button at full size.
@@ -752,10 +770,10 @@ public class SettingsPage : MonoBehaviour
     /// <summary>DIFFICULTY column on the right half of the Main page: one pick-one row per level.
     /// Left out entirely when there's no DifficultySelector, so the page can ship without it.
     /// Returns the y just below it (the column's top when it's left out).</summary>
-    private void BuildDifficultyColumn(float x, float columnWidth)
+    private float BuildDifficultyColumn(float x, float columnWidth)
     {
         float y = gap * 2f;
-        if (difficulty == null || difficulty.Levels == null) return;
+        if (difficulty == null || difficulty.Levels == null) return y;
 
         CreateLabel(_mainPage, "DIFFICULTY", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.4f),
                     UiPalette.Chalk, TextAlignmentOptions.Left);
@@ -778,6 +796,7 @@ public class SettingsPage : MonoBehaviour
         _difficultyMessage = CreateLabel(_mainPage, "", new Vector2(x, y), new Vector2(columnWidth, fontSize * 1.2f),
                                          UiPalette.Smoke, TextAlignmentOptions.Left);
         RefreshDifficultyRows();
+        return y + fontSize * 1.2f;
     }
 
     /// <summary>Row click. A refused change (session running, level missing) says so on the
@@ -787,6 +806,54 @@ public class SettingsPage : MonoBehaviour
         bool changed = difficulty.SetDifficulty(d);
         _difficultyMessage.text = changed ? "" : "Can't change that now";
         RefreshDifficultyRows();
+    }
+
+    // ── Floor nudge ───────────────────────────────────────────────
+
+    /// <summary>FLOOR row in the right column, just above View history: the label, then
+    /// [-5] [-1] [+1] [+5] (cm). Text labels, not ▲ / ▼: the default TMP font may lack them.
+    /// Left out when there's no WorldPlacement. <paramref name="aboveY"/> is the top of what sits
+    /// below it (View history's row).</summary>
+    private void BuildFloorRow(float x, float columnWidth, float aboveY, float difficultyBottom)
+    {
+        if (placement == null) return;
+
+        float buttonsY = aboveY - gap - keySize;
+        float labelHeight = fontSize * 1.4f;
+        float labelY = buttonsY - labelHeight;
+        if (labelY < difficultyBottom)
+            Debug.LogWarning("[SettingsPage] The FLOOR row overlaps the DIFFICULTY column — too many " +
+                             "levels for the board's height.");
+
+        _floorLabel = CreateLabel(_mainPage, "", new Vector2(x, labelY), new Vector2(columnWidth, labelHeight),
+                                  UiPalette.Chalk, TextAlignmentOptions.Left);
+
+        int[] steps = { -5, -1, 1, 5 };
+        float buttonWidth = (columnWidth - gap * (steps.Length - 1)) / steps.Length;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            int cm = steps[i];
+            CreateButton(_mainPage, cm > 0 ? $"+{cm}" : cm.ToString(),
+                         new Vector2(x + i * (buttonWidth + gap), buttonsY), new Vector2(buttonWidth, keySize),
+                         () => NudgeFloor(cm));
+        }
+
+        RefreshFloorLabel();
+    }
+
+    /// <summary>Button click. A refused step (at ±30 cm, mid-placing) does nothing: the label
+    /// keeps showing where the floor is.</summary>
+    private void NudgeFloor(int cm)
+    {
+        placement.NudgeFloor(cm / 100f);
+        RefreshFloorLabel();
+    }
+
+    private void RefreshFloorLabel()
+    {
+        if (_floorLabel == null || placement == null) return;
+        int cm = Mathf.RoundToInt(placement.FloorNudge * 100f);
+        _floorLabel.text = cm == 0 ? "FLOOR  0 cm" : $"FLOOR  {cm:+0;-0} cm";
     }
 
     private void BuildNewPlayerPage()
