@@ -841,7 +841,7 @@ public class SettingsPage : MonoBehaviour
         RefreshFloorLabel();
     }
 
-    /// <summary>Button click. A refused step (at ±30 cm, mid-placing) does nothing: the label
+    /// <summary>Button click. A refused step (at ±90 cm, mid-placing) does nothing: the label
     /// keeps showing where the floor is.</summary>
     private void NudgeFloor(int cm)
     {

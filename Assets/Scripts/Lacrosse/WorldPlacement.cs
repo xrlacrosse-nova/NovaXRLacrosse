@@ -107,7 +107,7 @@ public class WorldPlacement : MonoBehaviour
     // ── Public API ────────────────────────────────────────────────
 
     /// <summary>Largest floor nudge either way, in metres. A bigger miss is RECENTER's job.</summary>
-    public const float MaxFloorNudge = 0.30f;
+    public const float MaxFloorNudge = 0.90f;
 
     /// <summary>True from the start of a re-place until "Ready" (or until a session interrupts it).</summary>
     public bool IsPlacing { get; private set; }
