@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.XR;
-using UnityEngine.XR.Management;
 
 /// <summary>
 /// Puts the world in the right place around the goalie instead of trusting the origin the
@@ -16,17 +15,15 @@ using UnityEngine.XR.Management;
 /// keeps its coordinates and stays lined up with everything else:
 ///   1. "Please stand in an open space and look straight ahead." (at PromptSpeechRate): waits until
 ///      the head is tracked, level and still for SteadySeconds. Repeats the line every RepromptSeconds.
-///   2. RECENTER only: stops and starts the XR subsystems so the headset finds a new floor (a desk,
-///      box or ceiling taken as the floor is only fixed this way; TryRecenter() doesn't), asks for
-///      Floor tracking again, waits for the head to be tracked, and resets the floor nudge to 0.
-///   3. Height: the rig goes to its scene height plus the player's floor nudge, so the headset's own
+///   2. Height: the rig goes to its scene height plus the player's floor nudge, so the headset's own
 ///      floor (Floor tracking mode) is the virtual floor. The game never judges that floor: no height
-///      checks, no fallback. The player sees it and fixes it with RECENTER or the nudge.
-///   4. Launch and RECENTER turn the rig around the head (vertical axis only) so the head faces the
+///      checks, no fallback. The player sees it and fixes it with the nudge (or by relaunching in an
+///      open space; RECENTER keeps the same floor).
+///   3. Launch and RECENTER turn the rig around the head (vertical axis only) so the head faces the
 ///      rig's scene forward. Automatic re-places (tracking reset, deferred to session end) keep the
 ///      current heading.
-///   5. Slides the rig so the head is over the rig's scene position.
-///   6. "Ready."
+///   4. Slides the rig so the head is over the rig's scene position.
+///   5. "Ready."
 ///
 /// When: once at startup; again when the headset moves its origin (trackingOriginUpdated); and from
 /// Recenter() (the RECENTER gaze target, the only manual way). App resume does nothing. Never during
@@ -35,7 +32,7 @@ using UnityEngine.XR.Management;
 /// While re-placing, IsPlacing is true and the gaze targets (START, RECENTER) hide.
 ///
 /// Floor nudge: NudgeFloor() moves the world up/down by hand (settings board), up to
-/// ±MaxFloorNudge. Idle only, not saved, reset to 0 by RECENTER.
+/// ±MaxFloorNudge. Idle only, not saved (0 at launch). RECENTER keeps it (same floor).
 ///
 /// The goalie spot is the rig's scene pose, saved in Awake: its position, its forward (must point
 /// at the shooter), and its height (the virtual floor).
@@ -64,20 +61,6 @@ public class WorldPlacement : MonoBehaviour
     [Tooltip("Ignore origin-change events this many seconds after a re-place finishes.")]
     [Min(0f)]
     public float originChangeCooldown = 3f;
-
-    [Header("RECENTER")]
-    [Tooltip("RECENTER stops and starts the XR subsystems so the headset finds a new floor.")]
-    public bool restartXrOnRecenter = true;
-
-    [Tooltip("After the XR restart, wait at least this long (and until the head is tracked) " +
-             "before placing, so the headset has its new floor.")]
-    [Min(0f)]
-    public float restartSettleSeconds = 1f;
-
-    [Tooltip("Give up waiting for head tracking after the restart after this many seconds and " +
-             "place anyway.")]
-    [Min(1f)]
-    public float restartTimeoutSeconds = 10f;
 
     [Header("Prompts")]
     public string lookAheadPrompt = "Please stand in an open space and look straight ahead.";
@@ -118,8 +101,7 @@ public class WorldPlacement : MonoBehaviour
     [Min(0f)]
     public float startupLogSeconds = 20f;
 
-    [Tooltip("Editor only: head checks always pass (each step still waits its hold time), and " +
-             "RECENTER doesn't restart XR.")]
+    [Tooltip("Editor only: head checks always pass (each step still waits its hold time).")]
     public bool editorSkipHeadChecks = true;
 
     // ── Public API ────────────────────────────────────────────────
@@ -133,18 +115,17 @@ public class WorldPlacement : MonoBehaviour
     /// <summary>Fires with true when re-placing starts and false when it ends.</summary>
     public event Action<bool> OnPlacingChanged;
 
-    /// <summary>The player's floor nudge in metres (+ = world up). 0 at launch and after RECENTER.</summary>
+    /// <summary>The player's floor nudge in metres (+ = world up). 0 at launch.</summary>
     public float FloorNudge { get; private set; }
 
-    /// <summary>Fires with the new nudge whenever it changes (a click, or RECENTER resetting it).</summary>
+    /// <summary>Fires with the new nudge whenever it changes.</summary>
     public event Action<float> OnFloorNudgeChanged;
 
     /// <summary>
-    /// Starts a re-place with prompts that restarts XR (new floor from the headset), resets the floor
-    /// nudge and turns the world to face the player. Refused (returns false) mid-session or while one
-    /// is already running.
+    /// Starts a re-place with prompts that also turns the world to face the player. Same floor; keeps
+    /// the floor nudge. Refused (returns false) mid-session or while one is already running.
     /// </summary>
-    public bool Recenter() => Request("manual", deferIfSession: false, turn: true, restartXr: true);
+    public bool Recenter() => Request("manual", deferIfSession: false, turn: true);
 
     /// <summary>
     /// Moves the world up (+) or down (-) by <paramref name="meters"/>. The total stays within
@@ -259,8 +240,7 @@ public class WorldPlacement : MonoBehaviour
 
     // ── Requests ──────────────────────────────────────────────────
 
-    private bool Request(string reason, bool deferIfSession, bool turn, bool afterSession = false,
-                         bool restartXr = false)
+    private bool Request(string reason, bool deferIfSession, bool turn, bool afterSession = false)
     {
         if (!enabled) return false;
 
@@ -285,9 +265,8 @@ public class WorldPlacement : MonoBehaviour
             return false;
         }
 
-        Debug.Log($"[WorldPlacement] Re-place started ({reason}, {(turn ? "turns" : "keeps heading")}" +
-                  $"{(restartXr ? ", restarts XR" : "")}).");
-        _routine = StartCoroutine(PlaceRoutine(turn, afterSession, restartXr));
+        Debug.Log($"[WorldPlacement] Re-place started ({reason}, {(turn ? "turns" : "keeps heading")}).");
+        _routine = StartCoroutine(PlaceRoutine(turn, afterSession));
         return true;
     }
 
@@ -334,7 +313,7 @@ public class WorldPlacement : MonoBehaviour
 
     // ── Re-place ──────────────────────────────────────────────────
 
-    private IEnumerator PlaceRoutine(bool turn, bool afterSession, bool restartXr)
+    private IEnumerator PlaceRoutine(bool turn, bool afterSession)
     {
         SetPlacing(true);
         _aborted = false;
@@ -344,14 +323,6 @@ public class WorldPlacement : MonoBehaviour
 
         if (!_aborted)
             yield return WaitForHead(lookAheadPrompt, IsLookingAheadSteady, steadySeconds);
-
-        // Restart only once the player is standing in the open looking ahead, so the headset's new
-        // floor scan sees the floor rather than a desk.
-        if (!_aborted && restartXr)
-        {
-            yield return RestartXr();
-            SetFloorNudge(0f); // new floor from the headset; the old nudge no longer fits
-        }
 
         if (_aborted)
         {
@@ -424,66 +395,6 @@ public class WorldPlacement : MonoBehaviour
             }
 
             yield return null;
-        }
-    }
-
-    /// <summary>
-    /// Stops and starts the XR subsystems so the headset finds a new floor, asks for Floor tracking
-    /// again, then waits at least restartSettleSeconds and until the head is tracked (up to
-    /// restartTimeoutSeconds). Sets _aborted if a session starts. Skipped in the Editor (with
-    /// editorSkipHeadChecks) and when there's no active XR loader.
-    /// </summary>
-    private IEnumerator RestartXr()
-    {
-        if (!restartXrOnRecenter) yield break;
-
-        if (Application.isEditor && editorSkipHeadChecks)
-        {
-            Debug.Log("[WorldPlacement] Editor: XR restart skipped.");
-            yield break;
-        }
-
-        XRManagerSettings manager = XRGeneralSettings.Instance != null ? XRGeneralSettings.Instance.Manager : null;
-        if (manager == null || manager.activeLoader == null)
-        {
-            Debug.LogWarning("[WorldPlacement] No active XR loader — RECENTER can't restart XR; floor unchanged.");
-            yield break;
-        }
-
-        LogPose("before XR restart");
-        manager.StopSubsystems();
-        yield return null;
-        manager.StartSubsystems();
-        yield return null;
-        RequestFloorTracking();
-
-        float settleUntil = Time.time + restartSettleSeconds;
-        float giveUpAt = Time.time + restartTimeoutSeconds;
-        while (Time.time < settleUntil || (!IsHeadTracked() && Time.time < giveUpAt))
-        {
-            if (SessionRunning)
-            {
-                _aborted = true;
-                yield break;
-            }
-            yield return null;
-        }
-
-        if (!IsHeadTracked())
-            Debug.LogWarning("[WorldPlacement] Head not tracked after the XR restart; placing anyway.");
-        LogPose("after XR restart");
-    }
-
-    /// <summary>Floor mode stays on all the time: asked for again after every XR restart.</summary>
-    private void RequestFloorTracking()
-    {
-        var subsystems = new List<XRInputSubsystem>();
-        SubsystemManager.GetSubsystems(subsystems);
-        foreach (XRInputSubsystem subsystem in subsystems)
-        {
-            if (!subsystem.running) continue;
-            if (!subsystem.TrySetTrackingOriginMode(TrackingOriginModeFlags.Floor))
-                Debug.LogWarning("[WorldPlacement] Couldn't set Floor tracking after the XR restart.");
         }
     }
 
