@@ -33,7 +33,6 @@ public class FloorBoundary : MonoBehaviour
 
     // Cached components
     private Rigidbody _rb;
-    private bool _hasRigidbody;
     private Renderer _renderer;
     private Collider _collider;
     private Coroutine _despawnRoutine;
@@ -44,7 +43,6 @@ public class FloorBoundary : MonoBehaviour
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
-        _hasRigidbody = _rb != null;
         _renderer = GetComponent<Renderer>();
         _collider = GetComponent<Collider>();
     }
@@ -52,7 +50,7 @@ public class FloorBoundary : MonoBehaviour
     private void Update()
     {
         // Handle non-physics objects (or as a safety net for physics objects)
-        if (!_hasRigidbody)
+        if (_rb == null)
         {
             ClampTransform();
         }
@@ -61,7 +59,7 @@ public class FloorBoundary : MonoBehaviour
     private void FixedUpdate()
     {
         // Handle Rigidbody-based objects in the physics step
-        if (_hasRigidbody)
+        if (_rb != null)
         {
             ClampRigidbody();
         }
@@ -133,19 +131,10 @@ public class FloorBoundary : MonoBehaviour
     /// <param name="freezeInPlace">If true, stops the object dead where it is right now.</param>
     public void DespawnAfter(float delay, bool freezeInPlace)
     {
-        if (_despawnRoutine != null)
-        {
-            StopCoroutine(_despawnRoutine);
-            _despawnRoutine = null;
-        }
+        StopPendingDespawn();
 
-        // Zero the velocity BEFORE going kinematic — setting velocity on a kinematic body warns.
-        if (freezeInPlace && _hasRigidbody && !_rb.isKinematic)
-        {
-            _rb.linearVelocity = Vector3.zero;
-            _rb.angularVelocity = Vector3.zero;
-            _rb.isKinematic = true;
-        }
+        if (freezeInPlace)
+            FreezeBody();
 
         _despawnRoutine = StartCoroutine(DespawnRoutine(delay));
     }
@@ -157,9 +146,8 @@ public class FloorBoundary : MonoBehaviour
         else
             yield return null;
 
-        if (_renderer != null) _renderer.enabled = false;
-        if (_collider != null) _collider.enabled = false;
-        if (_hasRigidbody) _rb.isKinematic = true;
+        SetShown(false);
+        if (_rb != null) _rb.isKinematic = true;
 
         _despawnRoutine = null;
         OnDespawned?.Invoke();
@@ -171,15 +159,10 @@ public class FloorBoundary : MonoBehaviour
     /// </summary>
     public void CancelDespawn()
     {
-        if (_despawnRoutine != null)
-        {
-            StopCoroutine(_despawnRoutine);
-            _despawnRoutine = null;
-        }
+        StopPendingDespawn();
 
-        if (_renderer != null) _renderer.enabled = true;
-        if (_collider != null) _collider.enabled = true;
-        if (_hasRigidbody) _rb.isKinematic = false;
+        SetShown(true);
+        if (_rb != null) _rb.isKinematic = false;
     }
 
     /// <summary>
@@ -190,22 +173,35 @@ public class FloorBoundary : MonoBehaviour
     /// </summary>
     public void Hide()
     {
+        StopPendingDespawn();
+        FreezeBody();
+        SetShown(false);
+    }
+
+    private void StopPendingDespawn()
+    {
         if (_despawnRoutine != null)
         {
             StopCoroutine(_despawnRoutine);
             _despawnRoutine = null;
         }
+    }
 
-        // Zero the velocity BEFORE going kinematic — setting velocity on a kinematic body warns.
-        if (_hasRigidbody && !_rb.isKinematic)
-        {
-            _rb.linearVelocity = Vector3.zero;
-            _rb.angularVelocity = Vector3.zero;
-            _rb.isKinematic = true;
-        }
+    /// <summary>Stops the body dead and makes it kinematic. The velocity is zeroed BEFORE going
+    /// kinematic: setting velocity on a kinematic body warns.</summary>
+    private void FreezeBody()
+    {
+        if (_rb == null || _rb.isKinematic) return;
 
-        if (_renderer != null) _renderer.enabled = false;
-        if (_collider != null) _collider.enabled = false;
+        _rb.linearVelocity = Vector3.zero;
+        _rb.angularVelocity = Vector3.zero;
+        _rb.isKinematic = true;
+    }
+
+    private void SetShown(bool shown)
+    {
+        if (_renderer != null) _renderer.enabled = shown;
+        if (_collider != null) _collider.enabled = shown;
     }
 
     /// <summary>
