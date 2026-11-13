@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
@@ -286,8 +285,6 @@ public class SettingsPage : MonoBehaviour
     }
 
     // ── Pages ─────────────────────────────────────────────────────
-
-    public Page CurrentPage => _page;
 
     public void ShowPage(Page page)
     {

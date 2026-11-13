@@ -38,7 +38,6 @@ public class SessionHistory : MonoBehaviour
     public struct Lifetime
     {
         public int sessions, shots, saves;
-        public int[] shotsPerQuadrant, savesPerQuadrant;
     }
 
     [Tooltip("How many recent sessions the trend line covers.")]
@@ -234,14 +233,12 @@ public class SessionHistory : MonoBehaviour
     /// no session file is opened.</summary>
     public Lifetime GetLifetime(PlayerProfile player)
     {
-        var lifetime = new Lifetime { shotsPerQuadrant = new int[4], savesPerQuadrant = new int[4] };
+        var lifetime = new Lifetime();
         foreach (SessionSummary s in ListSessions(player))
         {
             lifetime.sessions++;
             lifetime.shots += s.shots;
             lifetime.saves += s.saves;
-            AddPerQuadrant(lifetime.shotsPerQuadrant, s.shotsPerQuadrant);
-            AddPerQuadrant(lifetime.savesPerQuadrant, s.savesPerQuadrant);
         }
         return lifetime;
     }
