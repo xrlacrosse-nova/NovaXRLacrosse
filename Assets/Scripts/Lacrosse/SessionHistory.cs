@@ -198,26 +198,12 @@ public class SessionHistory : MonoBehaviour
             AddPerQuadrant(saves, s.savesPerQuadrant);
         }
 
-        for (int q = 0; q < 4; q++)
-        {
-            if (shots[q] < minCornerShots) continue;
-
-            float rate = (float)saves[q] / shots[q];
-            if (!trends.hasBest || rate > trends.bestRate ||
-                (rate == trends.bestRate && shots[q] > shots[(int)trends.best]))
-            {
-                trends.hasBest = true;
-                trends.best = (Quadrant)q;
-                trends.bestRate = rate;
-            }
-            if (!trends.hasWorst || rate < trends.worstRate ||
-                (rate == trends.worstRate && shots[q] > shots[(int)trends.worst]))
-            {
-                trends.hasWorst = true;
-                trends.worst = (Quadrant)q;
-                trends.worstRate = rate;
-            }
-        }
+        trends.hasBest = TryExtremeCorner(shots, saves, minCornerShots, lowest: false,
+                                          out trends.best, out double bestRate);
+        trends.hasWorst = TryExtremeCorner(shots, saves, minCornerShots, lowest: true,
+                                           out trends.worst, out double worstRate);
+        trends.bestRate = (float)bestRate;
+        trends.worstRate = (float)worstRate;
 
         // One counted corner is both; call it best only.
         if (trends.hasWorst && trends.hasBest && trends.worst == trends.best)
@@ -433,6 +419,33 @@ public class SessionHistory : MonoBehaviour
         for (int i = 0; i < points.Length; i++)
             world[i] = points[i] + center;
         return world;
+    }
+
+    /// <summary>The corner with the lowest (or highest) save rate among corners with at least
+    /// <paramref name="minShots"/> shots. Ties go to more shots, then Quadrant order. Shared by
+    /// the History page's best/worst and the spoken summary's toughest corner, so they agree.</summary>
+    public static bool TryExtremeCorner(int[] shots, int[] saves, int minShots, bool lowest,
+                                        out Quadrant corner, out double rate)
+    {
+        corner = Quadrant.TopLeft;
+        rate = 0;
+        bool found = false;
+
+        for (int q = 0; q < 4; q++)
+        {
+            if (shots[q] < minShots) continue;
+
+            double r = (double)saves[q] / shots[q];
+            bool better = lowest ? r < rate : r > rate;
+            if (!found || better || (r == rate && shots[q] > shots[(int)corner]))
+            {
+                found = true;
+                corner = (Quadrant)q;
+                rate = r;
+            }
+        }
+
+        return found;
     }
 
     private static void AddPerQuadrant(int[] into, int[] add)

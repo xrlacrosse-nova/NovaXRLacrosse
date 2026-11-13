@@ -230,24 +230,9 @@ public class SessionSummarySpeaker : MonoBehaviour
         if (s.shots == 0) return false;
 
         double overall = (double)s.saves / s.shots;
-        bool found = false;
-        double lowest = 0;
-
-        for (int q = 0; q < 4; q++)
-        {
-            int shots = s.shotsPerQuadrant[q];
-            if (shots < minCornerShots) continue;
-
-            double rate = (double)s.savesPerQuadrant[q] / shots;
-            if (!found || rate < lowest || (rate == lowest && shots > s.shotsPerQuadrant[(int)corner]))
-            {
-                found = true;
-                corner = (Quadrant)q;
-                lowest = rate;
-            }
-        }
-
-        return found && lowest < overall;
+        return SessionHistory.TryExtremeCorner(s.shotsPerQuadrant, s.savesPerQuadrant, minCornerShots,
+                                               lowest: true, out corner, out double lowestRate)
+               && lowestRate < overall;
     }
 
     /// <summary>A corner with at least minCornerShots shots, every one saved. Ties go to more
