@@ -257,7 +257,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
         Vector3 center = _goalDetector.goalGateCenter;
         Vector2 half = _goalDetector.goalGateHalfSize;
 
-        Vector2 normalized = QuadrantMath.NormalizeToGate(center, half, gatePlanePos);
+        Vector2 normalized = _goalDetector.NormalizeOnGate(gatePlanePos);
 
         _shots.Add(new RecordedShot(normalized, scored, _nextSession));
 

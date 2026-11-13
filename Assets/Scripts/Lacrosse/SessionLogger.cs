@@ -226,9 +226,7 @@ public class SessionLogger : MonoBehaviour
 
     private void FinishShot(Vector3 gatePlanePos, string outcome)
     {
-        // Same normalization as the heatmap, so the saved point matches its dot.
-        Vector2 normalized = QuadrantMath.NormalizeToGate(
-            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, gatePlanePos);
+        Vector2 normalized = _goalDetector.NormalizeOnGate(gatePlanePos);
 
         _pending.resultNormalized = normalized;
         _pending.resultQuadrant = QuadrantMath.BucketFromNormalized(normalized);

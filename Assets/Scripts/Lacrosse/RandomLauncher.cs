@@ -658,8 +658,7 @@ public class RandomLauncher : MonoBehaviour
         _lastTarget = target;
         _hasTarget = true;
         _lastQuadrant = quadrant;
-        LastAimNormalized = QuadrantMath.NormalizeToGate(
-            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, target);
+        LastAimNormalized = _goalDetector.NormalizeOnGate(target);
 
         // ── 4. Compute launch velocity ───────────────────────────
         // Gravity turns on only here, with the launch velocity, so the ball can't pick up a

@@ -266,7 +266,7 @@ public class ShotPathRecorder : MonoBehaviour
             points = _current.ToArray(),
             projectedTail = tail,
             outcome = outcome,
-            quadrant = QuadrantOf(gatePlanePos),
+            quadrant = QuadrantMath.BucketFromNormalized(_goalDetector.NormalizeOnGate(gatePlanePos)),
         };
         if (_paths.Count >= maxPaths)
             _paths.RemoveAt(0);
@@ -276,16 +276,6 @@ public class ShotPathRecorder : MonoBehaviour
         if (logPointCounts)
             Debug.Log($"[ShotPathRecorder] Path #{_paths.Count}: {path.points.Length} points, " +
                       $"{outcome}, {path.quadrant}, ends at ({endPoint.x:F2}, {endPoint.y:F2}, {endPoint.z:F2})");
-    }
-
-    /// <summary>Same normalization as ShotHeatmapRecorder (QuadrantMath.NormalizeToGate), so a
-    /// path's quadrant always matches its heatmap dot's.</summary>
-    private Quadrant QuadrantOf(Vector3 gatePlanePos)
-    {
-        Vector2 normalized = QuadrantMath.NormalizeToGate(
-            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, gatePlanePos);
-
-        return QuadrantMath.BucketFromNormalized(normalized);
     }
 
     /// <summary>A warm-up keeps the last session's paths but hides them (closing any replay,

@@ -82,6 +82,12 @@ public class GoalDetector : MonoBehaviour
     /// meaning as the <see cref="OnPlaneCrossed"/> payload), not where the stick touched it.</summary>
     public event Action<Vector3> OnSaved;
 
+    /// <summary>Where a point on the gate plane sits on the goal face, normalized to [-1, 1]
+    /// (QuadrantMath.NormalizeToGate). The aim, heatmap dot, path and saved shot all use this,
+    /// so they always agree.</summary>
+    public Vector2 NormalizeOnGate(Vector3 gatePlanePos) =>
+        QuadrantMath.NormalizeToGate(goalGateCenter, goalGateHalfSize, gatePlanePos);
+
     /// <summary>True once the current shot has scored.</summary>
     public bool GoalScored => _goalScored;
 
