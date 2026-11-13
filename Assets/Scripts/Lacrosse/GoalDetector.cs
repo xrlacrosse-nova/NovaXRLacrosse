@@ -171,9 +171,12 @@ public class GoalDetector : MonoBehaviour
             }
             else
             {
+                // Every shot is aimed inside the cage, so a crossing outside it is a bug rather
+                // than a miss. The recorders listen to OnGoalScored, so it's left off the
+                // heatmap, the paths and the saved session.
                 string lastHit = _launcher != null ? _launcher.LastHitName ?? "nothing" : "unknown";
-                Debug.Log($"[GoalDetector] Miss — ball crossed plane outside gate at " +
-                          $"({crossingPos.x:F2}, {crossingPos.y:F2}), last hit: {lastHit}");
+                Debug.LogWarning($"[GoalDetector] Shot crossed the goal plane outside the gate at " +
+                                 $"({crossingPos.x:F3}, {crossingPos.y:F3}), last hit: {lastHit}; not recorded.");
             }
 
             OnPlaneCrossed?.Invoke(crossingPos);

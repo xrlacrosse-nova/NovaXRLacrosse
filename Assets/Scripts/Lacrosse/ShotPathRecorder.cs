@@ -99,7 +99,7 @@ public class ShotPathRecorder : MonoBehaviour
     void OnEnable()
     {
         _goalDetector.OnShotLaunched += HandleShotLaunched;
-        _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        _goalDetector.OnGoalScored += HandleGoalScored;
         _goalDetector.OnSaved += HandleSaved;
 
         if (_floorBoundary != null)
@@ -115,7 +115,7 @@ public class ShotPathRecorder : MonoBehaviour
     void OnDisable()
     {
         _goalDetector.OnShotLaunched -= HandleShotLaunched;
-        _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        _goalDetector.OnGoalScored -= HandleGoalScored;
         _goalDetector.OnSaved -= HandleSaved;
 
         if (_floorBoundary != null)
@@ -154,24 +154,16 @@ public class ShotPathRecorder : MonoBehaviour
         _current.Add(transform.position);
     }
 
-    private void HandlePlaneCrossed(Vector3 crossingPos)
+    /// <summary>A crossing outside the gate doesn't fire this (GoalDetector warns instead). That
+    /// path stops sampling once the shot has ended (ShotInFlight is false) and is dropped on
+    /// despawn, the same as the heatmap and SessionLogger drop the shot.</summary>
+    private void HandleGoalScored(Vector3 crossingPos)
     {
         if (!_recording) return;
-
-        // GoalScored is set before OnPlaneCrossed fires, so it reflects this exact crossing.
-        // Every shot is aimed inside the cage, so a crossing outside it is a bug, not a miss:
-        // drop the path, same as ShotHeatmapRecorder and SessionLogger drop the shot.
-        if (!_goalDetector.GoalScored)
-        {
-            AbandonOpenPath($"the ball crossed the goal plane outside the gate at " +
-                            $"({crossingPos.x:F3}, {crossingPos.y:F3})");
-            return;
-        }
-
         FinishPath(crossingPos, Array.Empty<Vector3>(), crossingPos, PathOutcome.Goal);
     }
 
-    /// <summary>OnSaved and OnPlaneCrossed are mutually exclusive per shot, so each path is
+    /// <summary>OnSaved and OnGoalScored are mutually exclusive per shot, so each path is
     /// finished once.</summary>
     private void HandleSaved(Vector3 projectedPos)
     {
