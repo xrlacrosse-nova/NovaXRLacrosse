@@ -15,8 +15,8 @@ ones got past you. It also saves your results so you can track your progress ove
   - The files to 3D print it are in [`3D_Mount/`](3D_Mount/). You'll also need one
     M3 x 25 screw. See the [assembly drawing](3D_Mount/ml2_shaft_mount_assembly.svg)
     for what it looks like.
-- Enough open floor space to stand in front of the virtual goal 
-  - Preferrably 10 yards in front of you, as well as a yard to the left and right of you
+- Enough open floor space to stand in front of the virtual goal
+  - Preferably 10 yards in front of you, as well as a yard to the left and right of you
 
 ## Running a training session
 
@@ -42,8 +42,8 @@ between. A counter shows how many shots are left.
 
 Every shot is on target, so each one ends in one of two ways:
 
-- **Save:** the ball touches the virtual cylinder, which is adjacent to the controller. You'll see **SAVE!**, feel a light tap in the
-  controller, and hear the crowd cheer.
+- **Save:** the ball touches the virtual cylinder, which is adjacent to the controller.
+  You'll see **SAVE!**, feel a light tap in the controller, and hear the crowd cheer.
 - **Goal:** the ball got past you. You'll see **GOAL!**, feel a buzz, and hear the crowd boo.
 
 ### 4. Check your results
@@ -51,7 +51,7 @@ Every shot is on target, so each one ends in one of two ways:
 When the last shot is done, the app shows:
 
 - **A heatmap on the goal:** colored areas showing where shots went and how many you saved
-  in each spot (for example, `Top left: 2/2`). 
+  in each spot (for example, `Top left: 2/2`).
 - **Shot trails:** lines in the air showing the path of each shot.
 - **A spoken summary:** a voice reads out how the session went.
 
