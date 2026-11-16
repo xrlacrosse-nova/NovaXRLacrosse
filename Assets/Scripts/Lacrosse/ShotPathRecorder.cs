@@ -222,12 +222,15 @@ public class ShotPathRecorder : MonoBehaviour
         return tail;
     }
 
-    /// <summary>The ball despawned with its shot still open: it never crossed the gate plane
-    /// and wasn't saved (e.g. it deflected off the goalie's body and dropped). Stop sampling
-    /// now instead of recording it bouncing around until the next launch.</summary>
+    /// <summary>The ball despawned with its path still open. Either the shot never crossed the
+    /// gate plane and wasn't saved (e.g. it deflected off the goalie's body and dropped), or it
+    /// crossed outside the gate (a save or a goal would have finished the path). GoalDetector
+    /// only resets at the next launch, so ShotInFlight still tells the two apart here.</summary>
     private void HandleDespawned()
     {
-        AbandonOpenPath("the ball despawned before crossing the gate plane or being saved");
+        AbandonOpenPath(_goalDetector.ShotInFlight
+            ? "the ball despawned before crossing the gate plane or being saved"
+            : "the ball crossed the goal plane outside the gate");
     }
 
     /// <summary>Drops the shot being recorded, if any, with a warning — the session will show
