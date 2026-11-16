@@ -173,7 +173,7 @@ public class GoalDetector : MonoBehaviour
                 _displayTimer = DisplayDuration;
                 Debug.Log($"[GoalDetector] GOAL! Crossed gate at " +
                           $"({crossingPos.x:F2}, {crossingPos.y:F2}, {goalGateCenter.z:F2})");
-                OnGoalScored?.Invoke(crossingPos);
+                RaiseGuarded(OnGoalScored, crossingPos, nameof(OnGoalScored));
             }
             else
             {
@@ -185,7 +185,7 @@ public class GoalDetector : MonoBehaviour
                                  $"({crossingPos.x:F3}, {crossingPos.y:F3}), last hit: {lastHit}; not recorded.");
             }
 
-            OnPlaneCrossed?.Invoke(crossingPos);
+            RaiseGuarded(OnPlaneCrossed, crossingPos, nameof(OnPlaneCrossed));
         }
 
         _prevPos = currentPos;
@@ -205,7 +205,7 @@ public class GoalDetector : MonoBehaviour
         float fromPlane = _prevPos.z - goalGateCenter.z;
         _launchSide = fromPlane > 0f ? 1f : fromPlane < 0f ? -1f : 0f;
 
-        OnShotLaunched?.Invoke();
+        RaiseGuarded(OnShotLaunched, nameof(OnShotLaunched));
     }
 
     /// <summary>Resets all detection state ready for the next shot.</summary>
@@ -258,8 +258,43 @@ public class GoalDetector : MonoBehaviour
         Debug.Log($"[GoalDetector] SAVE! Touched at ({contactPos.x:F2}, {contactPos.y:F2}, {contactPos.z:F2}) | " +
                   $"was headed to gate plane at ({projected.x:F2}, {projected.y:F2})");
 
-        OnSaved?.Invoke(projected);
+        RaiseGuarded(OnSaved, projected, nameof(OnSaved));
         return true;
+    }
+
+    // ── Guarded events ────────────────────────────────────────────
+
+    /// <summary>Calls each listener of a shot event in its own try/catch, so one that throws
+    /// can't stop the others (or, on a goal, stop OnPlaneCrossed and the ball's fall). Same
+    /// pattern as RandomLauncher's session events (Session_Robustness_Plan.md, P1).</summary>
+    private void RaiseGuarded(Action evt, string eventName)
+    {
+        if (evt == null) return;
+
+        foreach (Delegate listener in evt.GetInvocationList())
+        {
+            try { ((Action)listener)(); }
+            catch (Exception e) { LogListenerError(listener, eventName, e); }
+        }
+    }
+
+    private void RaiseGuarded(Action<Vector3> evt, Vector3 pos, string eventName)
+    {
+        if (evt == null) return;
+
+        foreach (Delegate listener in evt.GetInvocationList())
+        {
+            try { ((Action<Vector3>)listener)(pos); }
+            catch (Exception e) { LogListenerError(listener, eventName, e); }
+        }
+    }
+
+    private void LogListenerError(Delegate listener, string eventName, Exception e)
+    {
+        Debug.LogError($"[GoalDetector] A {eventName} listener threw " +
+                       $"({listener.Method.DeclaringType?.Name}.{listener.Method.Name}); " +
+                       "the other listeners still ran.", this);
+        Debug.LogException(e, this);
     }
 
     /// <summary>True if the point is on the far side of the gate plane from where the shot was
