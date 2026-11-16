@@ -461,7 +461,9 @@ public class GoalieSaveZone : MonoBehaviour
     /// own mesh if there's no MeshFilter) and builds the volume.</summary>
     private void SetupPocket()
     {
-        if (!(_zoneCollider is MeshCollider meshCol))
+        // `is` is a plain C# type test, so a destroyed collider still matches: `== null` is
+        // Unity's check that also catches that.
+        if (!(_zoneCollider is MeshCollider meshCol) || meshCol == null)
         {
             if (buildPocketVolume && _zoneCollider != null)
                 Debug.LogWarning($"[GoalieSaveZone] The save area is a {_zoneCollider.GetType().Name}, not a " +
@@ -486,7 +488,7 @@ public class GoalieSaveZone : MonoBehaviour
             return;
         }
 
-        if (_faceMesh == null || !(_zoneCollider is MeshCollider meshCol)) return;
+        if (_faceMesh == null || !(_zoneCollider is MeshCollider meshCol) || meshCol == null) return;
 
         Mesh built = null;
         if (buildPocketVolume)
