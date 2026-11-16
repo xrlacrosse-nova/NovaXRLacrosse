@@ -236,25 +236,12 @@ public class SessionSummarySpeaker : MonoBehaviour
     }
 
     /// <summary>A corner with at least minCornerShots shots, every one saved. Ties go to more
-    /// shots, then Quadrant order.</summary>
+    /// shots, then Quadrant order: the highest-rate corner, accepted only if it's 100%.</summary>
     private static bool TryPerfectCorner(SessionSummary s, int minCornerShots, out Quadrant corner)
     {
-        corner = Quadrant.TopLeft;
-        bool found = false;
-
-        for (int q = 0; q < 4; q++)
-        {
-            int shots = s.shotsPerQuadrant[q];
-            if (shots < minCornerShots || s.savesPerQuadrant[q] != shots) continue;
-
-            if (!found || shots > s.shotsPerQuadrant[(int)corner])
-            {
-                found = true;
-                corner = (Quadrant)q;
-            }
-        }
-
-        return found;
+        return SessionHistory.TryExtremeCorner(s.shotsPerQuadrant, s.savesPerQuadrant, minCornerShots,
+                                               lowest: false, out corner, out double bestRate)
+               && bestRate >= 1.0;
     }
 
     private static string TrendSentence(IReadOnlyList<SessionSummary> newestFirst, int minCornerShots,

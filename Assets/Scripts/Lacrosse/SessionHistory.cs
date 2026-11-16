@@ -423,12 +423,17 @@ public class SessionHistory : MonoBehaviour
 
     /// <summary>The corner with the lowest (or highest) save rate among corners with at least
     /// <paramref name="minShots"/> shots. Ties go to more shots, then Quadrant order. Shared by
-    /// the History page's best/worst and the spoken summary's toughest corner, so they agree.</summary>
+    /// the History page's best/worst and the spoken summary's corners, so they agree.
+    /// Returns false for missing or short arrays (e.g. a hand-edited index.json entry), and
+    /// treats minShots below 1 as 1 so an empty corner can't give 0/0.</summary>
     public static bool TryExtremeCorner(int[] shots, int[] saves, int minShots, bool lowest,
                                         out Quadrant corner, out double rate)
     {
         corner = Quadrant.TopLeft;
         rate = 0;
+        if (shots == null || saves == null || shots.Length < 4 || saves.Length < 4) return false;
+
+        minShots = Mathf.Max(1, minShots);
         bool found = false;
 
         for (int q = 0; q < 4; q++)
