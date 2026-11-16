@@ -1,87 +1,112 @@
-# NovaXR Lacrosse — Goalie Training on Magic Leap 2
+# NovaXR Lacrosse: Goalie Training on Magic Leap 2
 
-A Magic Leap 2 reaction-training simulator for lacrosse goalies. A virtual shooter fires
-on-target shots at a random point in one corner of a virtual goal, and the goalie tries to
-save them with their real stick, which has the ML2 controller mounted on it. After each
-session the headset shows where shots went and which ones got past, and saves the results
-for that player.
+NovaXR Lacrosse is an Extended-Reality training app for lacrosse goalies. You wear a Magic Leap 2
+headset and see a virtual goal and a virtual shooter in your real space. The shooter takes
+shots at the goal, and you try to stop them with your own stick. The Magic Leap controller
+is attached to the stick, so the app knows where your stick is.
 
-## Requirements
+When a session ends, the app shows where every shot went, which ones you saved and which
+ones got past you. It also saves your results so you can track your progress over time.
 
-- Unity Editor **6000.2.6f2** (URP)
-- Magic Leap Unity SDK **2.5.0** (`com.magicleap.unitysdk`), plus `com.unity.xr.hands`
-  1.5.0 and `com.unity.inputsystem` 1.14.2 (installed through `Packages/manifest.json`)
-- A Magic Leap 2 headset and controller for on-device play
+## What you need
 
-## Running it
+- A **Magic Leap 2** headset and controller
+- A lacrosse stick with the **controller mount** attached
+  - The files to 3D print it are in [`3D_Mount/`](3D_Mount/). You'll also need one
+    M3 x 25 screw. See the [assembly drawing](3D_Mount/ml2_shaft_mount_assembly.svg)
+    for what it looks like.
+- Enough open floor space to stand in front of the virtual goal 
+  - Preferrably 10 yards in front of you, as well as a yard to the left and right of you
 
-1. Open the project in Unity 6000.2.6f2.
-2. Open **`Assets/Scenes/HelloCube.unity`**. Despite the placeholder name, this is the real
-   training scene.
-3. **In the Editor:** enter Play mode and press **Space** to start a session. Mouse clicks
-   stand in for the controller ray on the settings board, and the keys **L**, **H** and
-   **R** stand in for the voice commands.
-4. **On the headset:** build and deploy to the Magic Leap 2 as for any Magic Leap Unity SDK
-   project. The virtual floor lines up with the real floor.
+## Running a training session
 
-## How a session works
+### 1. Set up
 
-1. **Setup (between sessions).** Take the controller out of the stick mount and point it at
-   the settings board on the left. Pull the trigger to pick or add a player, choose a
-   difficulty (High school, College or Pro), or browse past sessions.
-2. **Start.** Put the controller back in the mount and look at the **START** target beside
-   the shooter for 3 seconds. The controller trigger does not start a session, so a stray
-   pull can't start one early.
-3. **Shots.** After `GET READY` → `3, 2, 1` → `GO!`, the shooter avatar takes a fixed number
-   of shots at random intervals, left- or right-handed. A label shows how many shots are left.
-   Every shot is on target and ends as a **save** (the stick touches the ball) or a **goal**.
-4. **Feedback during play.** A GOAL! / SAVE! cue, a controller tap (save) or buzz (goal),
-   and a crowd that cheers saves and boos goals.
-5. **Results.** When the session ends, a heatmap on the goal shows where shots crossed and
-   how often each area was saved (`Top left: 2/2`), 3D streaks show each shot's flight path,
-   and a voice reads a short summary. Results stay up until the next session starts.
-6. **Review.** Between sessions, say **"Lifetime"**, **"Last session"** or **"Repeat"**, or
-   use the board's History page to replay a past session.
+Take the controller out of the stick mount. On your left you'll see a **settings board**.
+Point the controller at it and pull the trigger to:
 
-## Features (`Assets/Scripts/Lacrosse/`)
+- **Pick your name**, or add a new player
+- **Choose a difficulty:** High school, College or Pro
+- **Look at past sessions** on the History page
 
-- **Shots:** `RandomLauncher` runs the session and solves each launch so the ball arcs onto
-  its aim point under gravity and air drag (`BallFlight`). `ShooterAnimationController`
-  launches each shot on the avatar's release frame, and `LacrosseStickGrip` keeps the stick
-  in the shooter's hands.
-- **Outcome detection:** `GoalDetector` is the single source of truth for the ball crossing
-  the goal plane, and `GoalieSaveZone` on the stick registers saves.
-- **Feedback:** `ShotOutcomeHaptics` (controller haptics) and `CrowdAmbience` (crowd audio).
-- **Results:** `ShotHeatmapRecorder` (color-coded heatmap with a colorblind-safe option),
-  `ShotPathRecorder` / `ShotPathVisualizer` (flight-path streaks) and
-  `SessionSummarySpeaker` (spoken summary through `TextToSpeech`).
-- **Players and history:** `PlayerProfileStore`, `SessionLogger` and `SessionHistory` keep
-  several players on one headset and save each session as JSON on the device. Data stays on
-  the headset; there is no export.
-- **Setup and input:** `SettingsPage` / `RayButton` / `ControllerRayPointer` (settings
-  board), `DifficultySelector` (fixed, player-chosen difficulty), `GazeStartTarget` (gaze
-  start) and `VoiceCommands`.
-- **Field markings:** white men's-field lines around the goal, built in the scene. Visual
-  only; no script.
+### 2. Start
 
-`Assets/Scenes/Practice_Unity.unity` is an older scene that still uses the legacy
-`BallLauncher`. Scripts and scenes outside `Lacrosse/` are original Magic Leap SDK example
-content, kept as reference and for reusable utilities.
+Put the controller back in the stick mount. Then **look at the START target** next to the
+shooter and hold your gaze there for 3 seconds.
 
-## Project docs
+### 3. Make saves
 
-The project docs (`docs/`: PRD, architecture, tasks, decisions, progress) and the
-per-feature design docs (`Plans/`) are kept locally and are not in this repository.
+You'll see **GET READY**, then a **3, 2, 1** countdown, then **GO!** The shooter takes a set
+number of shots, sometimes right-handed and sometimes left-handed, with random pauses in
+between. A counter shows how many shots are left.
+
+Every shot is on target, so each one ends in one of two ways:
+
+- **Save:** the ball touches the virtual cylinder, which is adjacent to the controller. You'll see **SAVE!**, feel a light tap in the
+  controller, and hear the crowd cheer.
+- **Goal:** the ball got past you. You'll see **GOAL!**, feel a buzz, and hear the crowd boo.
+
+### 4. Check your results
+
+When the last shot is done, the app shows:
+
+- **A heatmap on the goal:** colored areas showing where shots went and how many you saved
+  in each spot (for example, `Top left: 2/2`). 
+- **Shot trails:** lines in the air showing the path of each shot.
+- **A spoken summary:** a voice reads out how the session went.
+
+The results stay up until you start the next session.
+
+### 5. Look back at earlier sessions
+
+Between sessions, you can say:
+
+- **"Last session"** to see your most recent session again
+- **"Lifetime"** to see all of your results combined
+- **"Repeat"** to hear the spoken summary again
+
+You can also open the **History** page on the settings board to replay any past session.
+
+### Your data
+
+Each player's sessions are saved **on the headset only**. Several players can share one
+headset, and nothing is uploaded or exported.
 
 ---
 
-## About the Magic Leap examples
+## For developers
 
-This project started from Magic Leap's Unity examples project, which demonstrates Magic
-Leap features with the Magic Leap Unity SDK package. Those files can change or be removed
-from one SDK release to the next. If you depend on or modify them, duplicate them, rename
-them and move them out of the `Assets/MagicLeap` folder so an SDK upgrade doesn't overwrite
-your changes.
+### Requirements
+
+- Unity Editor **6000.2.6f2** (URP)
+- Magic Leap Unity SDK **2.5.0**, XR Hands 1.5.0 and Input System 1.14.2 (these install
+  automatically from `Packages/manifest.json`)
+
+### Opening the project
+
+1. Open the project in Unity 6000.2.6f2.
+2. Open **`Assets/Scenes/HelloCube.unity`**. The name is left over from the original
+   template, but this is the real training scene.
+3. **To test in the Editor:** press Play, then press **Space** to start a session. Use the
+   mouse to click buttons on the settings board, and press **L**, **H** or **R** in place of
+   the voice commands "Lifetime", "Last session" and "Repeat".
+4. **To run on the headset:** build and deploy to the Magic Leap 2 like any other Magic Leap
+   Unity project. The virtual floor lines up with your real floor.
+
+### Where the code lives
+
+All of the project's own code is in `Assets/Scripts/Lacrosse/`:
+
+| What it does | Scripts |
+|---|---|
+| Runs the session and fires shots with realistic ball flight | `RandomLauncher`, `BallFlight`, `ShooterAnimationController`, `LacrosseStickGrip` |
+| Decides whether each shot was a save or a goal | `GoalDetector`, `GoalieSaveZone` |
+| Controller vibration and crowd sounds | `ShotOutcomeHaptics`, `CrowdAmbience` |
+| Heatmap, shot trails and spoken summary | `ShotHeatmapRecorder`, `ShotPathRecorder`, `ShotPathVisualizer`, `SessionSummarySpeaker` |
+| Players and saved session history | `PlayerProfileStore`, `SessionLogger`, `SessionHistory` |
+| Settings board, difficulty, gaze start and voice commands | `SettingsPage`, `RayButton`, `ControllerRayPointer`, `DifficultySelector`, `GazeStartTarget`, `VoiceCommands` |
+
+---
 
 # Copyright
 Copyright (c) 2020-present Magic Leap, Inc. All Rights Reserved.
