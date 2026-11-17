@@ -222,15 +222,26 @@ public class ShotPathRecorder : MonoBehaviour
         return tail;
     }
 
-    /// <summary>The ball despawned with its path still open. Either the shot never crossed the
+    /// <summary>The ball despawned with its path still open. Usually the shot never crossed the
     /// gate plane and wasn't saved (e.g. it deflected off the goalie's body and dropped), or it
-    /// crossed outside the gate (a save or a goal would have finished the path). GoalDetector
-    /// only resets at the next launch, so ShotInFlight still tells the two apart here.</summary>
+    /// crossed outside the gate (a save or a goal would have finished the path).</summary>
     private void HandleDespawned()
     {
-        AbandonOpenPath(_goalDetector.ShotInFlight
-            ? "the ball despawned before crossing the gate plane or being saved"
-            : "the ball crossed the goal plane outside the gate");
+        AbandonOpenPath(DropReason("the ball despawned before crossing the gate plane or being saved"));
+    }
+
+    /// <summary>Why an open path is being dropped. GoalDetector's flags only reset at the next
+    /// launch, so they still describe this shot here. An off-gate crossing is named as such
+    /// whichever handler drops the path (on the session's last shot, HandleSessionEnded runs
+    /// first). A shot that ended (goal or save) but whose path is still open means a handler
+    /// threw before finishing it; GoalDetector already logged that error.</summary>
+    private string DropReason(string openShotReason)
+    {
+        if (_goalDetector.CrossedOutsideGate)
+            return "the ball crossed the goal plane outside the gate";
+        if (_goalDetector.ShotInFlight)
+            return openShotReason;
+        return "the shot ended but its path was never finished (see the error logged above)";
     }
 
     /// <summary>Drops the shot being recorded, if any, with a warning — the session will show
@@ -310,7 +321,7 @@ public class ShotPathRecorder : MonoBehaviour
 
         // Covers the last shot when RandomLauncher's despawn handler (which ends the session)
         // runs before HandleDespawned.
-        AbandonOpenPath("the session ended before the shot finished");
+        AbandonOpenPath(DropReason("the session ended before the shot finished"));
         ShowPaths();
     }
 

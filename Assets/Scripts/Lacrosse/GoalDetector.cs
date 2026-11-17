@@ -53,6 +53,7 @@ public class GoalDetector : MonoBehaviour
     private bool _goalScored = false;
     private bool _saved = false;
     private bool _resolved = false; // the shot has ended: goal, save, or any plane crossing
+    private bool _crossedOutsideGate = false;
     private float _displayTimer = 0f;
     private Vector3 _prevPos;       // ball's physics position at the last FixedUpdate
     private float _launchSide;      // +1 / -1: which side of the gate plane (in z) the shot started on
@@ -94,6 +95,11 @@ public class GoalDetector : MonoBehaviour
 
     /// <summary>True once the current shot has been saved.</summary>
     public bool Saved => _saved;
+
+    /// <summary>True once the current shot has crossed the gate plane outside the gate (a bug:
+    /// every shot is aimed on target). Nothing is recorded for it; recorders read this to say
+    /// why the shot was dropped. Cleared at the next launch or reset.</summary>
+    public bool CrossedOutsideGate => _crossedOutsideGate;
 
     /// <summary>True while a shot has been launched and hasn't ended yet (no plane crossing or
     /// save so far). A save can only be registered while this is true.</summary>
@@ -181,6 +187,7 @@ public class GoalDetector : MonoBehaviour
                 // Every shot is aimed inside the cage, so a crossing outside it is a bug rather
                 // than a miss. The recorders listen to OnGoalScored, so it's left off the
                 // heatmap, the paths and the saved session.
+                _crossedOutsideGate = true;
                 string lastHit = _launcher != null ? _launcher.LastHitName ?? "nothing" : "unknown";
                 Debug.LogWarning($"[GoalDetector] Shot crossed the goal plane outside the gate at " +
                                  $"({crossingPos.x:F3}, {crossingPos.y:F3}), last hit: {lastHit}; not recorded.");
@@ -201,6 +208,7 @@ public class GoalDetector : MonoBehaviour
         _goalScored = false;
         _saved = false;
         _resolved = false;
+        _crossedOutsideGate = false;
         _prevPos = BallPosition;
         // Not Mathf.Sign: it returns 1 for 0, and a launch exactly on the plane has no side.
         float fromPlane = _prevPos.z - goalGateCenter.z;
@@ -216,6 +224,7 @@ public class GoalDetector : MonoBehaviour
         _goalScored = false;
         _saved = false;
         _resolved = false;
+        _crossedOutsideGate = false;
         _displayTimer = 0f;
     }
 
