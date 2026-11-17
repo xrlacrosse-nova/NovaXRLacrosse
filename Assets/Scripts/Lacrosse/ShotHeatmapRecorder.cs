@@ -254,15 +254,13 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     private void RecordShot(Vector3 gatePlanePos, bool scored)
     {
-        Vector3 center = _goalDetector.goalGateCenter;
-        Vector2 half = _goalDetector.goalGateHalfSize;
-
         Vector2 normalized = _goalDetector.NormalizeOnGate(gatePlanePos);
 
         _shots.Add(new RecordedShot(normalized, scored, _nextSession));
 
         Debug.Log($"[ShotHeatmapRecorder] Recorded shot #{_shots.Count}: raw=({gatePlanePos.x:F3}, {gatePlanePos.y:F3}) " +
-                  $"center=({center.x:F3}, {center.y:F3}) half=({half.x:F3}, {half.y:F3}) " +
+                  $"center=({_goalDetector.goalGateCenter.x:F3}, {_goalDetector.goalGateCenter.y:F3}) " +
+                  $"half=({_goalDetector.goalGateHalfSize.x:F3}, {_goalDetector.goalGateHalfSize.y:F3}) " +
                   $"normalized=({normalized.x:F3}, {normalized.y:F3}) scored={scored}");
     }
 

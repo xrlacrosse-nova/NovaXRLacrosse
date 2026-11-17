@@ -128,7 +128,7 @@ public class ShotPathRecorder : MonoBehaviour
         }
     }
 
-    /// <summary>LateUpdate rather than Update: by now GoalDetector.Update has already run this
+    /// <summary>LateUpdate rather than Update: by now GoalDetector.FixedUpdate has already run this
     /// frame, so on the crossing frame ShotInFlight is false and the post-crossing position is
     /// never sampled — the path ends exactly on the event's gate-plane point. A save is
     /// registered from a physics trigger, which also runs before this.</summary>

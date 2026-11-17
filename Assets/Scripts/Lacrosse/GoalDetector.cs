@@ -6,14 +6,14 @@ using UnityEngine;
 /// Single source of truth for detecting when the lacrosse ball passes through the 2D
 /// goal gate plane. Attach to the same GameObject as the launcher and Rigidbody.
 ///
-/// Other components (e.g. recorders, ball launchers) should subscribe to
-/// <see cref="OnPlaneCrossed"/> / <see cref="OnGoalScored"/> instead of re-implementing
-/// plane-crossing detection.
+/// Other components subscribe to its events instead of re-implementing plane-crossing
+/// detection: recorders use <see cref="OnGoalScored"/> / <see cref="OnSaved"/>, and
+/// <see cref="OnPlaneCrossed"/> is only for ball motion past the plane (fall, flight).
 ///
 /// It also owns the "save" outcome: GoalieSaveZone (the goalie's stick) calls
 /// <see cref="TryRegisterSave"/> when it touches the ball mid-flight, which ends the shot
 /// (no plane crossing will follow) and raises <see cref="OnSaved"/>. A shot ends exactly
-/// once — as a goal, a miss, or a save.
+/// once — as a goal or a save.
 ///
 /// Quadrant layout (facing the goal):
 ///   TopLeft    | TopRight
@@ -52,7 +52,7 @@ public class GoalDetector : MonoBehaviour
     private bool _active = false;   // true after OnBallLaunched()
     private bool _goalScored = false;
     private bool _saved = false;
-    private bool _resolved = false; // the shot has ended: goal, miss, or save
+    private bool _resolved = false; // the shot has ended: goal, save, or any plane crossing
     private float _displayTimer = 0f;
     private Vector3 _prevPos;       // ball's physics position at the last FixedUpdate
     private float _launchSide;      // +1 / -1: which side of the gate plane (in z) the shot started on
@@ -71,7 +71,8 @@ public class GoalDetector : MonoBehaviour
     /// detection state has been reset, so <see cref="ShotInFlight"/> is already true.</summary>
     public event Action OnShotLaunched;
 
-    /// <summary>Fired whenever the ball crosses the gate plane, whether it's a goal or a miss.</summary>
+    /// <summary>Fired on every crossing of the gate plane, including one outside the gate (which
+    /// should never happen, since every shot is aimed on target).</summary>
     public event Action<Vector3> OnPlaneCrossed;
 
     /// <summary>Fired once when the ball crosses the gate plane inside the goal bounds.</summary>
@@ -94,7 +95,7 @@ public class GoalDetector : MonoBehaviour
     /// <summary>True once the current shot has been saved.</summary>
     public bool Saved => _saved;
 
-    /// <summary>True while a shot has been launched and hasn't ended yet (no goal, miss, or
+    /// <summary>True while a shot has been launched and hasn't ended yet (no plane crossing or
     /// save so far). A save can only be registered while this is true.</summary>
     public bool ShotInFlight => _active && !_resolved;
 
@@ -151,7 +152,7 @@ public class GoalDetector : MonoBehaviour
 
         if (crossedPlane)
         {
-            // The first crossing ends the shot (goal or miss), so a later bounce back across
+            // The first crossing ends the shot (inside the gate or not), so a later bounce back across
             // the plane can't fire OnPlaneCrossed a second time.
             _resolved = true;
 

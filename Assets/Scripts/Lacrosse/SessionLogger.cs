@@ -217,8 +217,9 @@ public class SessionLogger : MonoBehaviour
         FinishShot(projectedPos, ShotRecord.Save);
     }
 
-    /// <summary>Despawned with the shot still open: it never crossed the gate plane and wasn't
-    /// saved, so it's dropped (the heatmap and path streaks drop it too).</summary>
+    /// <summary>Despawned with the shot still open: it either never crossed the gate plane and
+    /// wasn't saved, or crossed it outside the gate (GoalDetector warns). Either way it's
+    /// dropped (the heatmap and path streaks drop it too).</summary>
     private void HandleDespawned()
     {
         _pending = null;

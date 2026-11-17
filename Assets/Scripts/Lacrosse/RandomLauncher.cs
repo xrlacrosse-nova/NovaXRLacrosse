@@ -90,7 +90,7 @@ public class RandomLauncher : MonoBehaviour
 
     [Header("Post-Crossing Falling (only when Use Unity Gravity is off)")]
     [Tooltip("Only used when Use Unity Gravity is off. If true, once the ball crosses the goal plane " +
-             "(make or miss) the launcher will apply custom gravity to make it fall to the floor.")]
+             "(every crossing, inside the gate or not) the launcher will apply custom gravity to make it fall to the floor.")]
     public bool enableCustomGravityOnGoal = true;
 
     [Tooltip("Only used when Use Unity Gravity is off. Downward acceleration (m/s^2) applied while " +
@@ -323,7 +323,7 @@ public class RandomLauncher : MonoBehaviour
         UpdateCountdownText();
     }
 
-    /// <summary>Called by GoalDetector whenever this ball crosses the gate plane, make or miss,
+    /// <summary>Called by GoalDetector whenever this ball crosses the gate plane (every crossing),
     /// so the ball always has a defined path (falling to the floor) past the plane. With Unity
     /// gravity on, it's already falling; adding custom gravity would double it.</summary>
     private void HandlePlaneCrossed(Vector3 crossingPos)
