@@ -236,12 +236,14 @@ public class SessionSummarySpeaker : MonoBehaviour
     }
 
     /// <summary>A corner with at least minCornerShots shots, every one saved. Ties go to more
-    /// shots, then Quadrant order: the highest-rate corner, accepted only if it's 100%.</summary>
+    /// shots, then Quadrant order: the highest-rate corner, accepted only if it's exactly 100%
+    /// (saves / shots is exactly 1.0 when they're equal). A hand-edited entry with more saves
+    /// than shots gives a rate above 1 and is refused, never spoken as "5 of 4".</summary>
     private static bool TryPerfectCorner(SessionSummary s, int minCornerShots, out Quadrant corner)
     {
         return SessionHistory.TryExtremeCorner(s.shotsPerQuadrant, s.savesPerQuadrant, minCornerShots,
                                                lowest: false, out corner, out double bestRate)
-               && bestRate >= 1.0;
+               && bestRate == 1.0;
     }
 
     private static string TrendSentence(IReadOnlyList<SessionSummary> newestFirst, int minCornerShots,
