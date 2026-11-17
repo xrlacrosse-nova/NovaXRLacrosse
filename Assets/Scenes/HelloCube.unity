@@ -3315,9 +3315,6 @@ MonoBehaviour:
   placeOnStartup: 1
   replaceOnOriginChange: 1
   originChangeCooldown: 3
-  restartXrOnRecenter: 1
-  restartSettleSeconds: 1
-  restartTimeoutSeconds: 10
   lookAheadPrompt: Please stand in an open space and look straight ahead
   readyPrompt: Ready
   promptSpeechRate: 0.8
@@ -3814,7 +3811,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0.42261827, y: 0, z: 0, w: 0.9063079}
   m_LocalPosition: {x: 0, y: 0.187, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.25, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 995508638}
@@ -3891,6 +3888,12 @@ MonoBehaviour:
   useSweepCheck: 1
   saveMargin: 0.015
   sweepStickMotion: 1
+  buildPocketVolume: 1
+  sidewallDepth: 0.04
+  pocketDepth: 0.09
+  pocketCenter: 0.03
+  pocketSize: 0.5
+  pocketSide: 1
   showDebugLogs: 1
 --- !u!54 &1679040421
 Rigidbody:
