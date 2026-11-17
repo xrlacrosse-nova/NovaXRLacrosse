@@ -26,7 +26,8 @@ Take the controller out of the stick mount. On your left you'll see a **settings
 Point the controller at it and pull the trigger to:
 
 - **Pick your name**, or add a new player
-- **Choose a difficulty:** High school, College or Pro
+- **Choose a difficulty:** Warm-up, High school, College or Pro. Warm-up sessions are
+  practice only: they aren't saved or summarized.
 - **Look at past sessions** on the History page
 
 ### 2. Start
