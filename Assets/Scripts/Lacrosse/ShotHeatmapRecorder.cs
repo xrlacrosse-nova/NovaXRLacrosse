@@ -199,7 +199,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     void OnEnable()
     {
-        _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        _goalDetector.OnGoalScored += HandleGoalScored;
         _goalDetector.OnSaved += HandleSaved;
 
         if (_launcher != null)
@@ -211,7 +211,7 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     void OnDisable()
     {
-        _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        _goalDetector.OnGoalScored -= HandleGoalScored;
         _goalDetector.OnSaved -= HandleSaved;
 
         if (_launcher != null)
@@ -233,24 +233,16 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     private bool IsWarmUp => _launcher != null && _launcher.IsWarmUp;
 
-    private void HandlePlaneCrossed(Vector3 crossingPos)
+    /// <summary>Only crossings inside the gate: GoalDetector warns about one outside it (a bug,
+    /// since every shot is aimed on target) and it stays off the readout.</summary>
+    private void HandleGoalScored(Vector3 crossingPos)
     {
         if (IsWarmUp) return;
-
-        // GoalDetector's own verdict, set before OnPlaneCrossed fires. Every shot is aimed
-        // inside the cage, so a crossing outside it is a bug rather than a miss: warn and
-        // leave it off the readout.
-        if (!_goalDetector.GoalScored)
-        {
-            Debug.LogWarning($"[ShotHeatmapRecorder] Shot crossed the goal plane outside the gate at " +
-                             $"({crossingPos.x:F3}, {crossingPos.y:F3}); not recorded.");
-            return;
-        }
 
         RecordShot(crossingPos, scored: true);
     }
 
-    /// <summary>A saved ball never crosses the gate plane, so OnPlaneCrossed doesn't fire for it —
+    /// <summary>A saved ball never crosses the gate plane, so OnGoalScored doesn't fire for it —
     /// GoalDetector raises OnSaved instead, with where the shot was headed at the gate plane.
     /// The two events are mutually exclusive per shot, so nothing is recorded twice.</summary>
     private void HandleSaved(Vector3 projectedPos)
@@ -262,15 +254,13 @@ public class ShotHeatmapRecorder : MonoBehaviour
 
     private void RecordShot(Vector3 gatePlanePos, bool scored)
     {
-        Vector3 center = _goalDetector.goalGateCenter;
-        Vector2 half = _goalDetector.goalGateHalfSize;
-
-        Vector2 normalized = QuadrantMath.NormalizeToGate(center, half, gatePlanePos);
+        Vector2 normalized = _goalDetector.NormalizeOnGate(gatePlanePos);
 
         _shots.Add(new RecordedShot(normalized, scored, _nextSession));
 
         Debug.Log($"[ShotHeatmapRecorder] Recorded shot #{_shots.Count}: raw=({gatePlanePos.x:F3}, {gatePlanePos.y:F3}) " +
-                  $"center=({center.x:F3}, {center.y:F3}) half=({half.x:F3}, {half.y:F3}) " +
+                  $"center=({_goalDetector.goalGateCenter.x:F3}, {_goalDetector.goalGateCenter.y:F3}) " +
+                  $"half=({_goalDetector.goalGateHalfSize.x:F3}, {_goalDetector.goalGateHalfSize.y:F3}) " +
                   $"normalized=({normalized.x:F3}, {normalized.y:F3}) scored={scored}");
     }
 

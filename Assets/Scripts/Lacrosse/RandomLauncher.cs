@@ -22,8 +22,7 @@ using UnityEngine.InputSystem;
 ///   2. Set LaunchOrigin to a Transform positioned where shots come from (e.g. an empty at player position).
 ///   3. Pick an AimMode and press Play. The ball stays idle until a session is started
 ///      (GazeStartTarget calls TryStartSession(), or Space bar in the Editor), then a session of ShotsPerSession
-///      shots runs automatically. Alternatively, call LaunchBall() directly from any other script
-///      or Unity Event to fire a single shot outside the session flow.
+///      shots runs automatically.
 ///   4. Optional: drag the shooter avatar (with ShooterAnimationController) into Shooter Animation.
 ///      Session shots then play the shooting animation and launch on its release frame, and
 ///      LaunchOrigin should be an empty parented to the shooter's stick head.
@@ -86,12 +85,12 @@ public class RandomLauncher : MonoBehaviour
 
     [Header("Ball Reset")]
     [Tooltip("If true, the ball teleports back to LaunchOrigin and resets GoalDetector state " +
-             "each time LaunchBall() is called, so you can test repeatedly in the editor.")]
+             "each time a shot is launched, so you can test repeatedly in the editor.")]
     public bool autoResetOnLaunch = true;
 
     [Header("Post-Crossing Falling (only when Use Unity Gravity is off)")]
     [Tooltip("Only used when Use Unity Gravity is off. If true, once the ball crosses the goal plane " +
-             "(make or miss) the launcher will apply custom gravity to make it fall to the floor.")]
+             "(every crossing, inside the gate or not) the launcher will apply custom gravity to make it fall to the floor.")]
     public bool enableCustomGravityOnGoal = true;
 
     [Tooltip("Only used when Use Unity Gravity is off. Downward acceleration (m/s^2) applied while " +
@@ -251,11 +250,7 @@ public class RandomLauncher : MonoBehaviour
         _placement = FindFirstObjectByType<WorldPlacement>();
 
         // The ballistic aim assumes no damping (BallFlight adds real drag itself). Interpolation smooths the arc between physics steps.
-#if UNITY_6000_0_OR_NEWER
         _rb.linearDamping = 0f;
-#else
-        _rb.drag = 0f;
-#endif
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
 
         if (useUnityGravity && Physics.gravity.sqrMagnitude < 0.001f)
@@ -328,7 +323,7 @@ public class RandomLauncher : MonoBehaviour
         UpdateCountdownText();
     }
 
-    /// <summary>Called by GoalDetector whenever this ball crosses the gate plane, make or miss,
+    /// <summary>Called by GoalDetector whenever this ball crosses the gate plane (every crossing),
     /// so the ball always has a defined path (falling to the floor) past the plane. With Unity
     /// gravity on, it's already falling; adding custom gravity would double it.</summary>
     private void HandlePlaneCrossed(Vector3 crossingPos)
@@ -626,17 +621,6 @@ public class RandomLauncher : MonoBehaviour
     // ── Public API ────────────────────────────────────────────────
 
     /// <summary>
-    /// Randomly picks one of the four quadrants, logs it, and launches the ball toward it
-    /// using the current <see cref="aimMode"/>. Safe to call from other scripts or Unity Events at
-    /// any time — this fires a single shot immediately, outside the session flow and without the
-    /// shooter animation (session shots go through FireNextShot()).
-    /// </summary>
-    public void LaunchBall()
-    {
-        LaunchToward(PickRandomQuadrant());
-    }
-
-    /// <summary>
     /// Launches toward a specific quadrant. Useful for scripted sequences or AI-driven shot selection.
     /// </summary>
     public void LaunchToward(Quadrant quadrant)
@@ -655,11 +639,7 @@ public class RandomLauncher : MonoBehaviour
             _rb.isKinematic = false;
             _rb.useGravity = false;
 
-#if UNITY_6000_0_OR_NEWER
             _rb.linearVelocity = Vector3.zero;
-#else
-            _rb.velocity = Vector3.zero;
-#endif
             _rb.angularVelocity = Vector3.zero;
 
             // Teleport through the Rigidbody too. With interpolation on (set in Awake) and
@@ -678,8 +658,7 @@ public class RandomLauncher : MonoBehaviour
         _lastTarget = target;
         _hasTarget = true;
         _lastQuadrant = quadrant;
-        LastAimNormalized = QuadrantMath.NormalizeToGate(
-            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, target);
+        LastAimNormalized = _goalDetector.NormalizeOnGate(target);
 
         // ── 4. Compute launch velocity ───────────────────────────
         // Gravity turns on only here, with the launch velocity, so the ball can't pick up a
@@ -719,11 +698,7 @@ public class RandomLauncher : MonoBehaviour
         _rb.useGravity = useUnityGravity;
 
         // ── 5. Apply and notify GoalDetector ─────────────────────
-#if UNITY_6000_0_OR_NEWER
         _rb.linearVelocity = launchVelocity;
-#else
-        _rb.velocity = launchVelocity;
-#endif
 
         _falling = false;
         LastLaunchSpeed = launchVelocity.magnitude;
@@ -731,7 +706,7 @@ public class RandomLauncher : MonoBehaviour
         _ballFlight?.BeginFlight(spin);
         _goalDetector.OnBallLaunched();
 
-        // Only session shots: a one-off LaunchBall() outside a session has nothing to hang.
+        // Only session shots: a LaunchToward() outside a session has nothing to hang.
         _lastHitName = null;
         StopShotWatchdog();
         if (_sessionRunning && _floorBoundary != null)

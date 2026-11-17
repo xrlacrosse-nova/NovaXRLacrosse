@@ -10,7 +10,7 @@ using UnityEngine;
 ///     launcher settings copied.
 ///   - Each shot: aim, speed and the shooter's hand at launch (RandomLauncher.LastAim*,
 ///     ShooterAnimationController.CurrentShotRightHanded), the gate-plane point and
-///     outcome when it ends (goal: OnPlaneCrossed, save: OnSaved).
+///     outcome when it ends (goal: OnGoalScored, save: OnSaved).
 ///   - Shots the heatmap doesn't record aren't saved either: one that despawns before crossing
 ///     the gate plane or being saved (e.g. off the goalie's body), or one that crosses outside
 ///     the gate. So the saved session matches what was shown.
@@ -75,7 +75,7 @@ public class SessionLogger : MonoBehaviour
         _launcher.OnSessionStarted += HandleSessionStarted;
         _launcher.OnSessionEnded += HandleSessionEnded;
         _goalDetector.OnShotLaunched += HandleShotLaunched;
-        _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        _goalDetector.OnGoalScored += HandleGoalScored;
         _goalDetector.OnSaved += HandleSaved;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned += HandleDespawned;
@@ -86,7 +86,7 @@ public class SessionLogger : MonoBehaviour
         _launcher.OnSessionStarted -= HandleSessionStarted;
         _launcher.OnSessionEnded -= HandleSessionEnded;
         _goalDetector.OnShotLaunched -= HandleShotLaunched;
-        _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        _goalDetector.OnGoalScored -= HandleGoalScored;
         _goalDetector.OnSaved -= HandleSaved;
         if (_floorBoundary != null)
             _floorBoundary.OnDespawned -= HandleDespawned;
@@ -202,30 +202,24 @@ public class SessionLogger : MonoBehaviour
         return shooter.CurrentShotRightHanded ? ShotRecord.RightHand : ShotRecord.LeftHand;
     }
 
-    private void HandlePlaneCrossed(Vector3 crossingPos)
+    /// <summary>A crossing outside the gate doesn't fire this (GoalDetector warns instead), so
+    /// that shot stays open and is dropped on despawn, like the heatmap and paths drop it.</summary>
+    private void HandleGoalScored(Vector3 crossingPos)
     {
         if (_pending == null) return;
-
-        // Outside the gate: ShotHeatmapRecorder warns and leaves it off the readout, so it isn't
-        // saved either (every shot is aimed on target; this is a bug, not a miss).
-        if (!_goalDetector.GoalScored)
-        {
-            _pending = null;
-            return;
-        }
-
         FinishShot(crossingPos, ShotRecord.Goal);
     }
 
-    /// <summary>OnSaved and OnPlaneCrossed are mutually exclusive per shot.</summary>
+    /// <summary>OnSaved and OnGoalScored are mutually exclusive per shot.</summary>
     private void HandleSaved(Vector3 projectedPos)
     {
         if (_pending == null) return;
         FinishShot(projectedPos, ShotRecord.Save);
     }
 
-    /// <summary>Despawned with the shot still open: it never crossed the gate plane and wasn't
-    /// saved, so it's dropped (the heatmap and path streaks drop it too).</summary>
+    /// <summary>Despawned with the shot still open: it either never crossed the gate plane and
+    /// wasn't saved, or crossed it outside the gate (GoalDetector warns). Either way it's
+    /// dropped (the heatmap and path streaks drop it too).</summary>
     private void HandleDespawned()
     {
         _pending = null;
@@ -233,9 +227,7 @@ public class SessionLogger : MonoBehaviour
 
     private void FinishShot(Vector3 gatePlanePos, string outcome)
     {
-        // Same normalization as the heatmap, so the saved point matches its dot.
-        Vector2 normalized = QuadrantMath.NormalizeToGate(
-            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, gatePlanePos);
+        Vector2 normalized = _goalDetector.NormalizeOnGate(gatePlanePos);
 
         _pending.resultNormalized = normalized;
         _pending.resultQuadrant = QuadrantMath.BucketFromNormalized(normalized);
@@ -248,7 +240,7 @@ public class SessionLogger : MonoBehaviour
     // ── Paths ─────────────────────────────────────────────────────
 
     /// <summary>Pairs ShotPathRecorder's paths with the saved shots in order. Read once here at
-    /// session end, so it doesn't matter which OnSaved / OnPlaneCrossed subscriber ran first.
+    /// session end, so it doesn't matter which OnSaved / OnGoalScored subscriber ran first.
     /// If they don't line up, the session is saved without paths rather than with the wrong
     /// ones.</summary>
     private void AttachPaths(SessionRecord session)

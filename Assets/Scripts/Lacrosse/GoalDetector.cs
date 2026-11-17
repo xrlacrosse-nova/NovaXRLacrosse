@@ -6,14 +6,14 @@ using UnityEngine;
 /// Single source of truth for detecting when the lacrosse ball passes through the 2D
 /// goal gate plane. Attach to the same GameObject as the launcher and Rigidbody.
 ///
-/// Other components (e.g. recorders, ball launchers) should subscribe to
-/// <see cref="OnPlaneCrossed"/> / <see cref="OnGoalScored"/> instead of re-implementing
-/// plane-crossing detection.
+/// Other components subscribe to its events instead of re-implementing plane-crossing
+/// detection: recorders use <see cref="OnGoalScored"/> / <see cref="OnSaved"/>, and
+/// <see cref="OnPlaneCrossed"/> is only for ball motion past the plane (fall, flight).
 ///
 /// It also owns the "save" outcome: GoalieSaveZone (the goalie's stick) calls
 /// <see cref="TryRegisterSave"/> when it touches the ball mid-flight, which ends the shot
 /// (no plane crossing will follow) and raises <see cref="OnSaved"/>. A shot ends exactly
-/// once — as a goal, a miss, or a save.
+/// once — as a goal or a save.
 ///
 /// Quadrant layout (facing the goal):
 ///   TopLeft    | TopRight
@@ -52,7 +52,8 @@ public class GoalDetector : MonoBehaviour
     private bool _active = false;   // true after OnBallLaunched()
     private bool _goalScored = false;
     private bool _saved = false;
-    private bool _resolved = false; // the shot has ended: goal, miss, or save
+    private bool _resolved = false; // the shot has ended: goal, save, or any plane crossing
+    private bool _crossedOutsideGate = false;
     private float _displayTimer = 0f;
     private Vector3 _prevPos;       // ball's physics position at the last FixedUpdate
     private float _launchSide;      // +1 / -1: which side of the gate plane (in z) the shot started on
@@ -71,7 +72,8 @@ public class GoalDetector : MonoBehaviour
     /// detection state has been reset, so <see cref="ShotInFlight"/> is already true.</summary>
     public event Action OnShotLaunched;
 
-    /// <summary>Fired whenever the ball crosses the gate plane, whether it's a goal or a miss.</summary>
+    /// <summary>Fired on every crossing of the gate plane, including one outside the gate (which
+    /// should never happen, since every shot is aimed on target).</summary>
     public event Action<Vector3> OnPlaneCrossed;
 
     /// <summary>Fired once when the ball crosses the gate plane inside the goal bounds.</summary>
@@ -82,13 +84,24 @@ public class GoalDetector : MonoBehaviour
     /// meaning as the <see cref="OnPlaneCrossed"/> payload), not where the stick touched it.</summary>
     public event Action<Vector3> OnSaved;
 
+    /// <summary>Where a point on the gate plane sits on the goal face, normalized to [-1, 1]
+    /// (QuadrantMath.NormalizeToGate). The aim, heatmap dot, path and saved shot all use this,
+    /// so they always agree.</summary>
+    public Vector2 NormalizeOnGate(Vector3 gatePlanePos) =>
+        QuadrantMath.NormalizeToGate(goalGateCenter, goalGateHalfSize, gatePlanePos);
+
     /// <summary>True once the current shot has scored.</summary>
     public bool GoalScored => _goalScored;
 
     /// <summary>True once the current shot has been saved.</summary>
     public bool Saved => _saved;
 
-    /// <summary>True while a shot has been launched and hasn't ended yet (no goal, miss, or
+    /// <summary>True once the current shot has crossed the gate plane outside the gate (a bug:
+    /// every shot is aimed on target). Nothing is recorded for it; recorders read this to say
+    /// why the shot was dropped. Cleared at the next launch or reset.</summary>
+    public bool CrossedOutsideGate => _crossedOutsideGate;
+
+    /// <summary>True while a shot has been launched and hasn't ended yet (no plane crossing or
     /// save so far). A save can only be registered while this is true.</summary>
     public bool ShotInFlight => _active && !_resolved;
 
@@ -145,7 +158,7 @@ public class GoalDetector : MonoBehaviour
 
         if (crossedPlane)
         {
-            // The first crossing ends the shot (goal or miss), so a later bounce back across
+            // The first crossing ends the shot (inside the gate or not), so a later bounce back across
             // the plane can't fire OnPlaneCrossed a second time.
             _resolved = true;
 
@@ -167,16 +180,20 @@ public class GoalDetector : MonoBehaviour
                 _displayTimer = DisplayDuration;
                 Debug.Log($"[GoalDetector] GOAL! Crossed gate at " +
                           $"({crossingPos.x:F2}, {crossingPos.y:F2}, {goalGateCenter.z:F2})");
-                OnGoalScored?.Invoke(crossingPos);
+                RaiseGuarded(OnGoalScored, crossingPos, nameof(OnGoalScored));
             }
             else
             {
+                // Every shot is aimed inside the cage, so a crossing outside it is a bug rather
+                // than a miss. The recorders listen to OnGoalScored, so it's left off the
+                // heatmap, the paths and the saved session.
+                _crossedOutsideGate = true;
                 string lastHit = _launcher != null ? _launcher.LastHitName ?? "nothing" : "unknown";
-                Debug.Log($"[GoalDetector] Miss — ball crossed plane outside gate at " +
-                          $"({crossingPos.x:F2}, {crossingPos.y:F2}), last hit: {lastHit}");
+                Debug.LogWarning($"[GoalDetector] Shot crossed the goal plane outside the gate at " +
+                                 $"({crossingPos.x:F3}, {crossingPos.y:F3}), last hit: {lastHit}; not recorded.");
             }
 
-            OnPlaneCrossed?.Invoke(crossingPos);
+            RaiseGuarded(OnPlaneCrossed, crossingPos, nameof(OnPlaneCrossed));
         }
 
         _prevPos = currentPos;
@@ -191,12 +208,13 @@ public class GoalDetector : MonoBehaviour
         _goalScored = false;
         _saved = false;
         _resolved = false;
+        _crossedOutsideGate = false;
         _prevPos = BallPosition;
         // Not Mathf.Sign: it returns 1 for 0, and a launch exactly on the plane has no side.
         float fromPlane = _prevPos.z - goalGateCenter.z;
         _launchSide = fromPlane > 0f ? 1f : fromPlane < 0f ? -1f : 0f;
 
-        OnShotLaunched?.Invoke();
+        RaiseGuarded(OnShotLaunched, nameof(OnShotLaunched));
     }
 
     /// <summary>Resets all detection state ready for the next shot.</summary>
@@ -206,6 +224,7 @@ public class GoalDetector : MonoBehaviour
         _goalScored = false;
         _saved = false;
         _resolved = false;
+        _crossedOutsideGate = false;
         _displayTimer = 0f;
     }
 
@@ -249,8 +268,43 @@ public class GoalDetector : MonoBehaviour
         Debug.Log($"[GoalDetector] SAVE! Touched at ({contactPos.x:F2}, {contactPos.y:F2}, {contactPos.z:F2}) | " +
                   $"was headed to gate plane at ({projected.x:F2}, {projected.y:F2})");
 
-        OnSaved?.Invoke(projected);
+        RaiseGuarded(OnSaved, projected, nameof(OnSaved));
         return true;
+    }
+
+    // ── Guarded events ────────────────────────────────────────────
+
+    /// <summary>Calls each listener of a shot event in its own try/catch, so one that throws
+    /// can't stop the others (or, on a goal, stop OnPlaneCrossed and the ball's fall). Same
+    /// pattern as RandomLauncher's session events (Session_Robustness_Plan.md, P1).</summary>
+    private void RaiseGuarded(Action evt, string eventName)
+    {
+        if (evt == null) return;
+
+        foreach (Delegate listener in evt.GetInvocationList())
+        {
+            try { ((Action)listener)(); }
+            catch (Exception e) { LogListenerError(listener, eventName, e); }
+        }
+    }
+
+    private void RaiseGuarded(Action<Vector3> evt, Vector3 pos, string eventName)
+    {
+        if (evt == null) return;
+
+        foreach (Delegate listener in evt.GetInvocationList())
+        {
+            try { ((Action<Vector3>)listener)(pos); }
+            catch (Exception e) { LogListenerError(listener, eventName, e); }
+        }
+    }
+
+    private void LogListenerError(Delegate listener, string eventName, Exception e)
+    {
+        Debug.LogError($"[GoalDetector] A {eventName} listener threw " +
+                       $"({listener.Method.DeclaringType?.Name}.{listener.Method.Name}); " +
+                       "the other listeners still ran.", this);
+        Debug.LogException(e, this);
     }
 
     /// <summary>True if the point is on the far side of the gate plane from where the shot was

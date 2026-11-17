@@ -55,9 +55,6 @@ public class RayButton : MonoBehaviour
     private Vector3 _restLocalPosition;
     private Coroutine _sink;
 
-    public bool IsHovered => _hovered;
-    public bool IsSelected => _selected;
-
     // ── Lifecycle ─────────────────────────────────────────────────
 
     void Awake()

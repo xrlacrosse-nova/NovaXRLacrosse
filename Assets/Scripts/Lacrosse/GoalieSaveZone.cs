@@ -119,10 +119,9 @@ public class GoalieSaveZone : MonoBehaviour
     // Pocket volume: the visible oval it's built from, the built mesh, and a flag set by
     // OnValidate so Inspector tweaks are applied on the next physics step (not inside OnValidate).
     private const int MaxOutlinePoints = 64;  // keeps the convex hull well under PhysX's 255 limit
-    private MeshCollider _meshCollider;
     private Mesh _faceMesh;
     private Mesh _pocketMesh;
-    private bool _pocketDirty = false;
+    private bool _pocketDirty;
 
     // ── Lifecycle ─────────────────────────────────────────────────
 
@@ -462,8 +461,9 @@ public class GoalieSaveZone : MonoBehaviour
     /// own mesh if there's no MeshFilter) and builds the volume.</summary>
     private void SetupPocket()
     {
-        _meshCollider = _zoneCollider as MeshCollider;
-        if (_meshCollider == null)
+        // `is` is a plain C# type test, so a destroyed collider still matches: `== null` is
+        // Unity's check that also catches that.
+        if (!(_zoneCollider is MeshCollider meshCol) || meshCol == null)
         {
             if (buildPocketVolume && _zoneCollider != null)
                 Debug.LogWarning($"[GoalieSaveZone] The save area is a {_zoneCollider.GetType().Name}, not a " +
@@ -472,7 +472,7 @@ public class GoalieSaveZone : MonoBehaviour
         }
 
         MeshFilter filter = GetComponent<MeshFilter>();
-        _faceMesh = filter != null && filter.sharedMesh != null ? filter.sharedMesh : _meshCollider.sharedMesh;
+        _faceMesh = filter != null && filter.sharedMesh != null ? filter.sharedMesh : meshCol.sharedMesh;
         RebuildPocket();
     }
 
@@ -488,7 +488,7 @@ public class GoalieSaveZone : MonoBehaviour
             return;
         }
 
-        if (_meshCollider == null || _faceMesh == null) return;
+        if (_faceMesh == null || !(_zoneCollider is MeshCollider meshCol) || meshCol == null) return;
 
         Mesh built = null;
         if (buildPocketVolume)
@@ -500,7 +500,7 @@ public class GoalieSaveZone : MonoBehaviour
                 built = BuildPocketMesh();
         }
 
-        _meshCollider.sharedMesh = built != null ? built : _faceMesh;
+        meshCol.sharedMesh = built != null ? built : _faceMesh;
 
         if (_pocketMesh != null)
             Destroy(_pocketMesh);

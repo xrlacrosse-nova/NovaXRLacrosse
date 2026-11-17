@@ -99,7 +99,7 @@ public class ShotPathRecorder : MonoBehaviour
     void OnEnable()
     {
         _goalDetector.OnShotLaunched += HandleShotLaunched;
-        _goalDetector.OnPlaneCrossed += HandlePlaneCrossed;
+        _goalDetector.OnGoalScored += HandleGoalScored;
         _goalDetector.OnSaved += HandleSaved;
 
         if (_floorBoundary != null)
@@ -115,7 +115,7 @@ public class ShotPathRecorder : MonoBehaviour
     void OnDisable()
     {
         _goalDetector.OnShotLaunched -= HandleShotLaunched;
-        _goalDetector.OnPlaneCrossed -= HandlePlaneCrossed;
+        _goalDetector.OnGoalScored -= HandleGoalScored;
         _goalDetector.OnSaved -= HandleSaved;
 
         if (_floorBoundary != null)
@@ -128,7 +128,7 @@ public class ShotPathRecorder : MonoBehaviour
         }
     }
 
-    /// <summary>LateUpdate rather than Update: by now GoalDetector.Update has already run this
+    /// <summary>LateUpdate rather than Update: by now GoalDetector.FixedUpdate has already run this
     /// frame, so on the crossing frame ShotInFlight is false and the post-crossing position is
     /// never sampled — the path ends exactly on the event's gate-plane point. A save is
     /// registered from a physics trigger, which also runs before this.</summary>
@@ -154,24 +154,16 @@ public class ShotPathRecorder : MonoBehaviour
         _current.Add(transform.position);
     }
 
-    private void HandlePlaneCrossed(Vector3 crossingPos)
+    /// <summary>A crossing outside the gate doesn't fire this (GoalDetector warns instead). That
+    /// path stops sampling once the shot has ended (ShotInFlight is false) and is dropped on
+    /// despawn, the same as the heatmap and SessionLogger drop the shot.</summary>
+    private void HandleGoalScored(Vector3 crossingPos)
     {
         if (!_recording) return;
-
-        // GoalScored is set before OnPlaneCrossed fires, so it reflects this exact crossing.
-        // Every shot is aimed inside the cage, so a crossing outside it is a bug, not a miss:
-        // drop the path, same as ShotHeatmapRecorder and SessionLogger drop the shot.
-        if (!_goalDetector.GoalScored)
-        {
-            AbandonOpenPath($"the ball crossed the goal plane outside the gate at " +
-                            $"({crossingPos.x:F3}, {crossingPos.y:F3})");
-            return;
-        }
-
         FinishPath(crossingPos, Array.Empty<Vector3>(), crossingPos, PathOutcome.Goal);
     }
 
-    /// <summary>OnSaved and OnPlaneCrossed are mutually exclusive per shot, so each path is
+    /// <summary>OnSaved and OnGoalScored are mutually exclusive per shot, so each path is
     /// finished once.</summary>
     private void HandleSaved(Vector3 projectedPos)
     {
@@ -230,12 +222,26 @@ public class ShotPathRecorder : MonoBehaviour
         return tail;
     }
 
-    /// <summary>The ball despawned with its shot still open: it never crossed the gate plane
-    /// and wasn't saved (e.g. it deflected off the goalie's body and dropped). Stop sampling
-    /// now instead of recording it bouncing around until the next launch.</summary>
+    /// <summary>The ball despawned with its path still open. Usually the shot never crossed the
+    /// gate plane and wasn't saved (e.g. it deflected off the goalie's body and dropped), or it
+    /// crossed outside the gate (a save or a goal would have finished the path).</summary>
     private void HandleDespawned()
     {
-        AbandonOpenPath("the ball despawned before crossing the gate plane or being saved");
+        AbandonOpenPath(DropReason("the ball despawned before crossing the gate plane or being saved"));
+    }
+
+    /// <summary>Why an open path is being dropped. GoalDetector's flags only reset at the next
+    /// launch, so they still describe this shot here. An off-gate crossing is named as such
+    /// whichever handler drops the path (on the session's last shot, HandleSessionEnded runs
+    /// first). A shot that ended (goal or save) but whose path is still open means a handler
+    /// threw before finishing it; GoalDetector already logged that error.</summary>
+    private string DropReason(string openShotReason)
+    {
+        if (_goalDetector.CrossedOutsideGate)
+            return "the ball crossed the goal plane outside the gate";
+        if (_goalDetector.ShotInFlight)
+            return openShotReason;
+        return "the shot ended but its path was never finished (see the error logged above)";
     }
 
     /// <summary>Drops the shot being recorded, if any, with a warning — the session will show
@@ -274,7 +280,7 @@ public class ShotPathRecorder : MonoBehaviour
             points = _current.ToArray(),
             projectedTail = tail,
             outcome = outcome,
-            quadrant = QuadrantOf(gatePlanePos),
+            quadrant = QuadrantMath.BucketFromNormalized(_goalDetector.NormalizeOnGate(gatePlanePos)),
         };
         if (_paths.Count >= maxPaths)
             _paths.RemoveAt(0);
@@ -284,16 +290,6 @@ public class ShotPathRecorder : MonoBehaviour
         if (logPointCounts)
             Debug.Log($"[ShotPathRecorder] Path #{_paths.Count}: {path.points.Length} points, " +
                       $"{outcome}, {path.quadrant}, ends at ({endPoint.x:F2}, {endPoint.y:F2}, {endPoint.z:F2})");
-    }
-
-    /// <summary>Same normalization as ShotHeatmapRecorder (QuadrantMath.NormalizeToGate), so a
-    /// path's quadrant always matches its heatmap dot's.</summary>
-    private Quadrant QuadrantOf(Vector3 gatePlanePos)
-    {
-        Vector2 normalized = QuadrantMath.NormalizeToGate(
-            _goalDetector.goalGateCenter, _goalDetector.goalGateHalfSize, gatePlanePos);
-
-        return QuadrantMath.BucketFromNormalized(normalized);
     }
 
     /// <summary>A warm-up keeps the last session's paths but hides them (closing any replay,
@@ -325,7 +321,7 @@ public class ShotPathRecorder : MonoBehaviour
 
         // Covers the last shot when RandomLauncher's despawn handler (which ends the session)
         // runs before HandleDespawned.
-        AbandonOpenPath("the session ended before the shot finished");
+        AbandonOpenPath(DropReason("the session ended before the shot finished"));
         ShowPaths();
     }
 
