@@ -29,6 +29,14 @@ Point the controller at it and pull the trigger to:
 - **Choose a difficulty:** Warm-up, High school, College or Pro. Warm-up sessions are
   practice only: they aren't saved or summarized.
 - **Look at past sessions** on the History page
+- **Fix the floor height** if the virtual floor (the goal and field lines) sits above or below
+  your real floor. Use the **FLOOR** buttons (**-5**, **-1**, **+1**, **+5** cm) to move
+  the world down or up until it lines up. It goes up to 90 cm either way and resets to 0 cm
+  each time the app starts.
+
+> **New to the headset?** Add your name with **+ New player** before your first session.
+> Your sessions are saved under the selected name, so this keeps your history separate from
+> everyone else's on the headset.
 
 ### 2. Start
 
@@ -92,7 +100,8 @@ headset, and nothing is uploaded or exported.
    mouse to click buttons on the settings board, and press **L**, **H** or **R** in place of
    the voice commands "Lifetime", "Last session" and "Repeat".
 4. **To run on the headset:** build and deploy to the Magic Leap 2 like any other Magic Leap
-   Unity project. The virtual floor lines up with your real floor.
+   Unity project. The virtual floor lines up with your real floor. If it doesn't, use the
+   **FLOOR** buttons on the settings board.
 
 ### Where the code lives
 
