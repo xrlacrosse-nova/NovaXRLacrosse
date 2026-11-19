@@ -1305,7 +1305,7 @@ MonoBehaviour:
   visualRoot: {fileID: 2015872925}
   ringFill: {fileID: 653368260}
   gazeCenter: {fileID: 0}
-  targetRadius: 1
+  targetRadius: 1.5
   fillColor: {r: 1, g: 0, b: 0, a: 1}
   showTrack: 1
   trackColor: {r: 1, g: 1, b: 1, a: 0.25}
